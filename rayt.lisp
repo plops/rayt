@@ -1,3 +1,5 @@
+(declaim (optimize (speed 2) (safety 3) (debug 3)))
+
 (deftype num ()
   `single-float)
 
@@ -12,28 +14,36 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
                       arrays)
      ,@body))
 
-(defun num (x)
-  (coerce x 'num))
+(eval-when (:compile-toplevel)
+ (defun num (x)
+   (declare (number x))
+   (coerce x 'single-float)))
 
 (defmacro vec (&rest rest)
   (let ((a (gensym)))
-   `(let ((,a (make-array ,(length rest)
+   `(let ((,a (make-array ,(list-length rest)
 			 :element-type 'num)))
-      ,@(let ((i -1))
+      ,@(let ((i 0))
+	     (declare ((integer 0 #.(1- (expt 2 16))) i))
 	     (loop for e in rest collect
-		  `(setf (aref ,a ,(incf i))
-			 ,(typecase e ;; FIXME once-only e?
-				    (number (coerce e 'num))
-				    (t `(* (num 1) ,e))))))
+		  (prog1
+		       `(setf (aref ,a ,i)
+			     ,(typecase e ;; FIXME once-only e?
+					(fixnum (* 1s0 e))
+					(num e)
+					(t `(* #.(num 1) ,e))))
+		     (incf i))))
       ,a)))
 #+nil
 (vec 2 2 1)
-
+#+nil
+(vec .2 .3 1)
 (defun v (&optional
-	  (z (num 0))
-	  (y (num 0))
-	  (x (num 0)))
-  (vec z y x))
+	  (z #.(num 0))
+	  (y #.(num 0))
+	  (x #.(num 0)))
+  (declare (num z y x))
+  (the vec (vec z y x)))
 
 (declaim (ftype (function (vec) (values vec &optional)) copy-vec))
 (defun copy-vec (a)
@@ -44,7 +54,7 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
       (setf (aref b i) (aref a i)))
     b))
 #+nil
-(copy-vec (vec3))
+(copy-vec (v))
 
 (progn
   (declaim (ftype (function (vec &rest t) (values vec &optional))
@@ -52,43 +62,49 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
   (defun .+ (a &rest rest)
     (let ((r (copy-vec a)))
       (dolist (e rest)
+	(declare (vec e))
 	(dotimes (i (length r))
 	  (incf (aref r i) (aref e i))))
       r))
   (defun .- (a &rest rest)
     (let ((r (copy-vec a)))
       (dolist (e rest)
+	(declare (vec e))
 	(dotimes (i (length r))
 	  (decf (aref r i) (aref e i))))
      r))
   (defun .* (a &rest rest)
     (let ((r (copy-vec a)))
       (dolist (e rest)
+	(declare (vec e))
 	(dotimes (i (length r))
 	 (setf (aref r i) (* (aref r i) (aref e i)))))
      r))
   (defun ./ (a &rest rest)
     (let ((r (copy-vec a)))
       (dolist (e rest)
+	(declare (vec e))
 	(dotimes (i (length r))
 	  (setf (aref r i) (/ (aref r i) (aref e i)))))
       r)))
 #+nil
 (./ (vec 1 2 3) (vec 3 32 2) (vec 32 4 2))
 
-(progn
-  (declaim (ftype (function (vec vec) (values num &optional)) dot))
-  (defun dot (a b)
-    (let ((r (num 0)))
-      (dotimes (i (length a))
-	(incf r (* (aref a i) (aref b i))))
-      r)))
+(defun dot (a b)
+  (declare (vec a b))
+  (let ((r (num 0)))
+    (declare (num r))
+    (dotimes (i (length a))
+      (incf r (* (aref a i) (aref b i))))
+    (the num r)))
 #+nil
 (dot (v 1 3 0) (v 3))
 
 (defun norm (v)
   (declare (vec v))
-  (the num (sqrt (dot v v))))
+  (let ((l2 (dot v v)))
+    (declare ((single-float 0s0) l2)) ;; FIXME: write num here
+    (the num (sqrt l2))))
 #+nil
 (norm (v 1 1 0))
 
@@ -126,7 +142,6 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
 (progn
   (declaim (ftype (function (num num num) (values num &optional))
 		  quadratic-root-dist))
-  (declaim (optimize (speed 3) (safety 0) (debug 0)))
   (defun quadratic-root-dist (a b c)
     (let ((eps (coerce 1s-12 'num))
 	  (zero (coerce 0 'num))
@@ -144,8 +159,12 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
 (defun find-inverse-ray-angle (height focal-length)
   "HEIGHT meridional distance of a point in sample space towards optic
 axis. Coordinates in mm."
-  (declare (num rho focal-length))
-  (the num (asin (/ height focal-length))))
+  (declare (num height focal-length))
+  (when (< focal-length height)
+    (error 'height-smaller-than-focal-length))
+  (let ((rat (/ height focal-length)))
+    (declare ((single-float 0s0 1s0) rat))
+   (the num (asin rat))))
 #+nil
 (find-inverse-ray-angle 2.2 2.61)
 
@@ -169,8 +188,8 @@ axis. Coordinates in mm."
 
 (defun v-spherical (theta phi)
   "Convert spherical coordinates into cartesian."
-  (declare ((double-float 0d0 #.(/ pi 4)) theta)
-	   ((double-float 0d0 #.(* 2 pi)) phi)
+  (declare ((single-float 0s0 #.(/ (coerce pi 'num) 4)) theta)
+	   ((single-float 0s0 #.(* 2 (coerce pi 'num))) phi)
 	   (values vec &optional))
   (let* ((st (sin theta)))
     (the vec
@@ -185,7 +204,9 @@ axis. Coordinates in mm."
       (error "vector isn't normalized"))))
 
 (defun check-range (min max &rest rest)
+  (declare (num min max))
   (dolist (e rest)
+    (declare (num e))
     (unless (< min e max)
       (error "range check failed"))))
 
@@ -268,6 +289,7 @@ F, numerical aperture NA and center of objective C."
 	     :initial-contents
 	     (mapcar #'(lambda (q) 
 			 (destructuring-bind (z y x) q
+			   (declare (fixnum z y x))
 			   (v (* .01 z) (* .001 y) (* .001 x))))
 		     l))))
     a))
