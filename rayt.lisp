@@ -256,7 +256,7 @@ axis. Coordinates in mm."
 	  (error 'angle-too-steep))
 	sinu2))
     (values 
-     (the vec ro) ;; direction, not normalized, points to object
+     (the vec ro)	;; direction, not normalized, points to object
      (the vec (.+ s i)) ;; intersection of gaussian sphere and ray
      )))
 
@@ -278,18 +278,70 @@ direction of excitation light)."
     (refract start dir c n f na ri)))
 
 #+nil
-(ray-behind-objective (v 0 .1 .1) (v) (v) (v 1 0 0) 
-		      (find-focal-length 63s0)
-		      1.4s0
-		      1.515s0)
+(with-open-file (s "asy/obj.asy" :direction :output
+		   :if-exists :supersede
+		   :if-does-not-exist :create)
+  (macrolet ((asy (str &rest rest)
+	       `(progn
+		  (format s ,str ,@rest)
+		  (terpri s))))
+    (flet ((coord (v)
+	     (format nil "(~f,~f,~f)"
+		     (vx v) (vy v) (vz v))))
+      (let* ((f (find-focal-length 63s0))
+	    (na 1.4s0)
+	    (ri 1.515s0)
+	    (rif (* ri f))
+	    (r (find-bfp-radius na f)))
+       (asy "import three;")
+       (asy "size(1000,1000);")
+       (dotimes (i (length *centers*))
+	(asy "draw(shift(~a)*scale3(~f)*unitsphere,~a);"
+	     (coord (.s ri (aref *centers* i)))
+	     (* ri (* .001 8))
+	     (if (= i 0)
+		 "red"
+		 "blue")))
+       (asy "draw((0,0,0)--(0,0,1));")
+       (asy "draw(shift(~f,~f,~f)*scale3(~f)*unitsquare3);"
+	    (- r) (- r)
+	    (* -1 (+ rif f))
+	    (* 2 r))
+       (let ((field .1))
+	 (asy "draw(shift(~f,~f,0)*scale3(~f)*unitsquare3);"
+	      (- field) (- field)
+	      (* 2 field)))
+       (asy "draw(shift(0,0,~f)*scale3(~f)*unitcircle3);"
+	    (- rif)
+	    r)
+       (let ((nk 3)
+	     (nj 5))
+	 (dotimes (j nj)
+	  (dotimes (k nk)
+	    (let ((bfp/r (v 0 (/ j nj)))
+		  (obj (v 0 (* .1 (/ k nk)))))
+	      (multiple-value-bind (dir hit)
+		  (ray-behind-objective obj
+					bfp/r
+					(v (- rif))
+					(v 1 0 0) 
+					f na ri)
+		(let ((bfp (.s r bfp/r)))
+		  (asy "draw(~a--~a--~a);"
+		       (coord (.+ bfp
+				  (v (- (+ rif f)))))
+		       (coord hit) (coord obj))))))))
+       (asy "clip(unitsphere);")))))
 
 (defparameter *centers* ; in mm
-  (let* ((l '((6 79 177)
+  (let* ((l '((3 212 168)
+	      (6 79 177)
 	      (12 125 111)
 	      (13 101 135)
 	      (13 155 89)
-	      (11 219 120)
-	      (3 212 168)))
+	      (11 219 120)))
+	 (central 0)
+	 (offset (- (first (elt l central))))
 	 (a (make-array 
 	     (length l)
 	     :element-type 'vec
@@ -297,7 +349,9 @@ direction of excitation light)."
 	     (mapcar #'(lambda (q) 
 			 (destructuring-bind (z y x) q
 			   (declare (fixnum z y x))
-			   (v (* .01 z) (* .001 y) (* .001 x))))
+			   (v (* .01 (+ z offset))
+			      (* .001 (- y 150))
+			      (* .001 (- x 150)))))
 		     l))))
     a))
 
