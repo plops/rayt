@@ -1,4 +1,4 @@
-(declaim (optimize (speed 2) (safety 3) (debug 3)))
+(declaim (optimize (speed 0) (safety 3) (debug 3)))
 
 (deftype num ()
   `single-float)
@@ -189,8 +189,7 @@ axis. Coordinates in mm."
 (defun v-spherical (theta phi)
   "Convert spherical coordinates into cartesian."
   (declare ((single-float 0s0 #.(/ (coerce pi 'num) 4)) theta)
-	   ((single-float 0s0 #.(* 2 (coerce pi 'num))) phi)
-	   (values vec &optional))
+	   ((single-float 0s0 #.(* 2 (coerce pi 'num))) phi))
   (let* ((st (sin theta)))
     (the vec
       (v (cos theta)
@@ -368,3 +367,139 @@ direction of excitation light)."
 
 #+nil
 (make-instance 'model :centers *centers*)
+
+(defun aref-circ (a j i)
+  (declare ((simple-array fixnum 2) a)
+	   (fixnum j i))
+  (destructuring-bind (y x) (array-dimensions a)
+    (let ((ii (cond ((< i 0) (+ i x))
+		    ((<= x i) (- i x))
+		    (t i)))
+	  (jj (cond ((< j 0) (+ j y))
+		    ((<= y j) (- j y))
+		    (t j))))
+      (aref a jj ii))))
+
+
+(defun in-rectangle-p (p pmin pmax)
+  (declare (vec p pmin pmax))
+  (the boolean
+   (progn
+     (loop for i from 1 below 3 do
+	  (unless (< (aref pmin i) (aref p i) (aref pmax i))
+	    (return-from in-rectangle-p nil)))
+     t)))
+
+#+nil
+(in-rectangle-p (v 0 7.4 9.2) (v) (v 0 12 12))
+
+(defun generate-poisson (h w min-dist &optional (new-point-count 30))
+  (let* ((cell-size (/ min-dist (sqrt 2)))
+	(grid (make-array (list (ceiling h cell-size)
+				(ceiling w cell-size))
+			  :element-type 'fixnum
+			  :initial-element -1))
+	(points (make-array 10000
+			    :element-type 'vec
+			    :initial-element (v)
+			    :adjustable t
+			    :fill-pointer 0))
+	(process ())
+	(output (make-array 1000
+			    :element-type 'fixnum
+			    :initial-element -1
+			    :adjustable t
+			    :fill-pointer 0)))
+    (labels ((image->grid (p)
+	       (declare (vec p))
+	       (the vec 
+		 (v 0
+		    (floor (vy p) cell-size)
+		    (floor (vx p) cell-size))))
+	     (make-random-point (p &optional (mindist nil))
+	       (declare (vec p)
+			((or null num) mindist))
+	       (let ((radius (+ (* 2 min-dist) 
+				(if mindist
+				    (random mindist)
+				    0s0)))
+		     (angle (random (coerce (* 2 pi) 'num))))
+		 (the vec
+		   (v 0
+		      (+ (vy p) (* radius (sin angle)))
+		      (+ (vx p) (* radius (cos angle)))))))
+	     (point-collides-p (p)
+	       (declare (vec p))
+	       (the boolean
+		 (let ((gp (image->grid p)))
+		   (loop for j from -2 upto 2 do
+			(loop for i from -2 upto 2 do
+			     (let* ((x (floor (vx gp)))
+				    (y (floor (vy gp)))
+				    (ind (aref-circ grid (+ y j) (+ x i))))
+			       (unless (= -1 ind)
+				 (format t "found circ ~a~%"
+					 (list ind x y process))
+				 (when (< min-dist (norm (.- p (aref points ind))))
+				   (return-from point-collides-p t))))))))))
+      (let ((first-point (v 0 
+			    (random (* 1s0 h)) 
+			    (random (* 1s0 w))))
+	    (ind 0)) 
+	;; store the first point in all containers
+	(vector-push-extend first-point points)
+	(vector-push-extend ind output)
+	(push ind process)
+	(let ((q (image->grid first-point)))
+	  (format t "first point ~a~%" (list first-point q ind))
+	  (setf (aref grid (floor (vy q)) (floor (vx q))) 
+	       ind)))
+      (loop while process do
+	   (let* ((np (length process))
+		  (point (elt process (if (= 0 np) 
+					 0
+					 (random np)))))
+	     (setf process (remove point process))
+	     (dotimes (i new-point-count)
+	       (let ((new-point (make-random-point (aref points point))))
+		 (when (and (in-rectangle-p new-point (v) (v 0 h w))
+			    (not (point-collides-p new-point)))
+		   (vector-push-extend new-point points)
+		   (let ((cur (fill-pointer points)))
+		     (push cur process)
+		     (vector-push-extend cur output)
+		     (let ((q (image->grid new-point)))
+		       (setf (aref grid (floor (vy q))
+				   (floor (vx q)))
+			     cur))))))))
+      (let ((m (make-array (length output)
+			   :element-type 'vec
+			   :initial-element (v))))
+	(dotimes (i (length m))
+	  (setf (aref m i) (aref points (aref output i))))
+	m))))
+
+
+(let ((m (make-array 10 :element-type 'single-float
+		     :fill-pointer 0 :adjustable t)))
+  (vector-push-extend 3s0 m)
+  (vector-push-extend 33s0 m)
+  (list (fill-pointer m) m))
+
+(progn
+ (defun run ()
+   (with-open-file (s "/dev/shm/o.asy" :direction :output
+		      :if-exists :supersede
+		      :if-does-not-exist :create)
+     (macrolet ((asy (str &rest rest)
+		  `(progn
+		     (format s ,str ,@rest)
+		     (terpri s))))
+       (asy "import graph;size(400,400);")
+       (let* ((r 10s0)
+	      (m (generate-poisson 400 400 r 10)))
+	 (dotimes (i (length m))
+	   (asy "draw(Circle((~f,~f),~f));"
+		(vx (aref m i)) (vy (aref m i))
+		r))))))
+ (run))
