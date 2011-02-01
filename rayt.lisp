@@ -42,8 +42,8 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
 	  (z #.(num 0))
 	  (y #.(num 0))
 	  (x #.(num 0)))
-  (declare (num z y x))
   (the vec (vec z y x)))
+
 
 (declaim (ftype (function (vec) (values vec &optional)) copy-vec))
 (defun copy-vec (a)
@@ -143,7 +143,7 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
   (declaim (ftype (function (num num num) (values num &optional))
 		  quadratic-root-dist))
   (defun quadratic-root-dist (a b c)
-    (let ((eps (coerce 1s-12 'num))
+    (let ((eps (coerce 1s-7 'num))
 	  (zero (coerce 0 'num))
 	  (det2 (- (* b b) (* 4 a c))))
      (if (<= det2 zero)
@@ -193,18 +193,18 @@ axis. Coordinates in mm."
 	   (values vec &optional))
   (let* ((st (sin theta)))
     (the vec
-      (v (* st (cos phi))
+      (v (cos theta)
 	 (* st (sin phi))
-	 (cos theta)))))
+	 (* st (cos phi))))))
 
 (defun check-unit-vector (&rest rest)
   ;; turn off for faster speed
   (dolist (e rest)
-    (unless (< (abs (- (norm e) 1)) 1d-12)
+    (unless (< (abs (- (norm e) 1)) 1s-7)
       (error "vector isn't normalized"))))
 
 (defun check-range (min max &rest rest)
-  (declare (num min max))
+#+nil  (declare (num min max))
   (dolist (e rest)
     (declare (num e))
     (unless (< min e max)
@@ -227,7 +227,7 @@ axis. Coordinates in mm."
 (defun refract (start dir c n f na ri)
   (declare (vec start dir c n)
 	   (num f na ri))
-  (check-unit-vector start dir n)
+  (check-unit-vector dir n)
   (check-range 1 4 ri)
   (check-range 0 100 f)
   (check-range 0 1.6 na)
@@ -262,8 +262,10 @@ axis. Coordinates in mm."
 
 (defun ray-behind-objective (obj bfp/r c n f na ri)
   "OBJ point in object space (in mm). BFP/R 3D point on BFP, 1 is on
-the border of the BFP (values z y x, z is ignored).  Focal length
-F, numerical aperture NA and center of objective C."
+the border of the BFP (values z y x, z is ignored).  Focal length F,
+numerical aperture NA and center of objective C (position where
+Gaussian sphere cuts optic axis). Normal N of objective (points in
+direction of excitation light)."
   (declare (vec obj bfp/r c n)
 	   (num f na ri))
   (let* ((theta (find-inverse-ray-angle (norm obj) f))
@@ -275,6 +277,11 @@ F, numerical aperture NA and center of objective C."
 			 (* r (vx bfp/r))))))
     (refract start dir c n f na ri)))
 
+#+nil
+(ray-behind-objective (v 0 .1 .1) (v) (v) (v 1 0 0) 
+		      (find-focal-length 63s0)
+		      1.4s0
+		      1.515s0)
 
 (defparameter *centers* ; in mm
   (let* ((l '((6 79 177)
