@@ -367,19 +367,209 @@ direction of excitation light)."
 
 #+nil
 (make-instance 'model :centers *centers*)
+;; for process take random element
+;; replace with the last one and shrink array by one
 
-(defun aref-circ (a j i)
-  (declare ((simple-array fixnum 2) a)
-	   (fixnum j i))
-  (destructuring-bind (y x) (array-dimensions a)
-    (let ((ii (cond ((< i 0) (+ i x))
-		    ((<= x i) (- i x))
-		    (t i)))
-	  (jj (cond ((< j 0) (+ j y))
-		    ((<= y j) (- j y))
-		    (t j))))
-      (aref a jj ii))))
+(defun make-random-queue ()
+  (the (array fixnum 1)
+   (make-array 1000 :element-type 'fixnum
+	       :adjustable t
+	       :fill-pointer 0)))
 
+(defun push-random (e queue)
+  (declare (fixnum e)
+	   ((array fixnum 1) queue))
+  (vector-push-extend e queue))
+
+(defun pop-random (queue)
+  (declare ((array fixnum 1) queue))
+  (let* ((n (length queue))
+	 (i (if (= 0 n) 
+		(return-from pop-random nil)
+		(random n)))
+	 (e (aref queue i)))
+    (setf (aref queue i) (aref queue (1- n)))
+    (decf (fill-pointer queue))
+    (the fixnum e)))
+
+#+nil
+(let ((m (make-random-queue)))
+  (dotimes (i 10)
+   (push-random i m))
+  (dotimes (i 8)
+    (format t "~a~%" (pop-random m)))
+  m)
+
+(defclass ranges ()
+  ((mi :accessor mi :initarg :mi
+       :type (array num 1))
+   (ma :accessor ma :initarg :ma 
+       :type (array num 1))))
+
+(defun make-ranges (&optional (min 0s0) (max (coerce (* 2 pi) 'num)))
+  (let ((mi (make-array 8 :element-type 'num 
+			:initial-element 0s0 
+			:fill-pointer 0
+			:adjustable t))
+	(ma (make-array 8 :element-type 'num 
+			:initial-element 0s0 
+			:fill-pointer 0
+			:adjustable t)))
+    (vector-push-extend min mi)
+    (vector-push-extend max ma)
+    (make-instance 'ranges :ma ma :mi mi)))
+
+(defmethod print-object ((r ranges) (s stream))
+  (format s "#<ranges ~{~{~4,2f ~}~}>" (loop for i below (length (mi r)) collect
+				(list (aref (mi r) i) (aref (ma r) i)))))
+
+(defgeneric delete-range (ranges pos))
+(defmethod delete-range ((r ranges) pos)
+  (declare (fixnum pos))
+  (let ((n (length (mi r))))
+    (when (< pos (- n 1))
+      (loop for i from pos below n do
+	   (setf (aref (mi r) i) (aref (mi r) (1+ i)))
+	   (setf (aref (ma r) i) (aref (ma r) (1+ i)))))
+    (vector-pop (mi r))
+    (vector-pop (ma r))
+    nil))
+#+nil
+(let ((r (make-ranges)))
+  (subtract r .2 .3)
+  (delete-range r 0)
+  (delete-range r 0)
+  (length (mi r)))
+#+NIL
+(let ((r (make-ranges)))
+  (subtract r 0s0 (coerce (* 2 pi) 'num)))
+
+(defgeneric insert (ranges pos min max))
+(defmethod insert ((r ranges) pos min max)
+  (declare (num min max)
+	   (fixnum pos))
+  (let ((n (length (mi r))))
+    (cond
+      ((< pos n) ;; make space for one and move towards right
+       (vector-push-extend (aref (mi r) (1- n)) (mi r))
+       (vector-push-extend (aref (ma r) (1- n)) (ma r))
+       (loop for i from (- n 2) downto pos do
+	    (setf (aref (mi r) (1+ i)) (aref (mi r) i)
+		  (aref (ma r) (1+ i)) (aref (ma r) i)))
+       (setf (aref (mi r) pos) min
+	     (aref (ma r) pos) max))
+      ((= pos n)
+       (vector-push-extend min (mi r))
+       (vector-push-extend max (ma r)))
+      (t (error "~a" (list 'trying-to-write-behind-ranges 'pos pos 'n n)))))
+  pos)
+
+(defgeneric subtract (ranges min max))
+(defmethod subtract ((r ranges) min max)
+  (declare (num min max))
+  (assert (<= min max))
+  (let ((2pi (coerce (* 2 pi) 'num))
+	(eps .000001s0))
+   (cond ((< 2pi min) 
+	  (subtract r (- min 2pi) (- max 2pi)))
+	 ((< max 0s0)
+	  (subtract r (+ min 2pi) (+ max 2pi)))
+	 ((< min 0s0)
+	  (subtract r 0s0 max)
+	  (subtract r (+ min 2pi) 2pi))
+	 ((< 2pi max)
+	  (subtract r min 2pi)
+	  (subtract r 0s0 (- max 2pi)))
+	 ((= 0 (fill-pointer (mi r)))
+	  nil)
+	 (t 
+	  (let ((pos 0))
+	    (if (< min (aref (mi r) 0))
+		(setf pos -1) ;; left has to go to front
+		(let ((lo 0)
+		      (mid 0)
+		      (hi (fill-pointer (mi r))))
+		  ;; binary search for segment whose mi is just smaller than min
+		  (loop while (< lo (- hi 1)) do
+		       (setf mid (floor (+ lo hi) 2))
+		       (if (< (aref (mi r) mid) min)
+			   (setf lo mid)
+			   (setf hi mid)))
+		  (setf pos lo)))
+	    (cond 
+	      ((= -1 pos) ;; left of all segments
+	       (setf pos 0))
+	      ((< min (aref (ma r) pos)) ;; new interval starts inside old segment 
+	       (let ((mip (aref (mi r) pos))
+		     (map (aref (ma r) pos)))
+		 (if (< (- min mip) eps) ;; new interval starts at beginning of old segment
+		     (if (< max map) ;; is shorter than old segment
+			 (setf (aref (mi r) pos) max) ; so let it start at new end
+			 (delete-range r pos))
+		     ;; there is a gap between new and old segment
+		     (progn
+		       (setf (aref (ma r) pos) min) ;; max of old segment is beginning of new
+		       (when (< max map) ;; new segment within old one
+			 (insert r (1+ pos) max map))
+		       (incf pos)))))
+	      ((and (< pos (1- (fill-pointer (mi r)))) ;; there are more old segments on the right
+		    (< (aref (mi r) (1+ pos)) max)) ;; new interval is extending into (or over) next old segment
+	       (incf pos)))
+	    ;; iterate towards right over old segments
+	    (loop while (and (< pos (length (mi r))) ;; the loop decreases the fill-pointer!
+			     (< (aref (mi r) pos) max))
+	       do
+		 (if (< (- (aref (ma r) pos) max) eps)
+		     (delete-range r pos) ;; new segment overlaps this old one
+		     (setf (aref (mi r) pos) max) ;; new segment ends within this old one
+		     ))))))
+  nil)
+
+#+nil
+(let ((r (make-ranges)))
+    (subtract r 1.1s0 1.2s0)
+    (subtract r 0s0 2s0)
+    (subtract r 2.3s0 2.5s0)
+    (subtract r 2.6s0 2.63s0)
+    (subtract r 0s0 (coerce (* 2 pi) 'num))
+    r)
+#+nil
+(let ((m (make-array 3 :element-type 'fixnum :adjustable t :fill-pointer 0)))
+  (vector-push 3 m)
+  (vector-push 4 m)
+  (vector-push 5 m)
+  (vector-push 6 m)
+  (vector-pop m)
+  m)
+
+
+(defun torus (i x)
+  (declare (fixnum i x))
+  (the fixnum
+   (cond ((< i 0) (+ i x))
+	 ((<= x i) (- i x))
+	 (t i))))
+
+(defun aref-circ (a v k)
+  (declare ((simple-array fixnum 3) a)
+	   (fixnum k)
+	   (vec v))
+  (destructuring-bind (y x n) (array-dimensions a)
+    (declare (ignore n))
+    (let ((ii (torus (floor (vx v)) x))
+	  (jj (torus (floor (vy v)) y)))
+      (aref a jj ii k))))
+
+(defun (setf aref-circ) (newvalue a v k)
+  (declare (fixnum newvalue)
+	   ((simple-array fixnum 3) a)
+	   (vec v)
+	   (fixnum k))
+  (destructuring-bind (y x n) (array-dimensions a)
+    (declare (ignore n))
+    (let ((ii (torus (floor (vx v)) x))
+	  (jj (torus (floor (vy v)) y)))
+      (setf (aref a jj ii k) newvalue))))
 
 (defun in-rectangle-p (p pmin pmax)
   (declare (vec p pmin pmax))
@@ -393,113 +583,326 @@ direction of excitation light)."
 #+nil
 (in-rectangle-p (v 0 7.4 9.2) (v) (v 0 12 12))
 
-(defun generate-poisson (h w min-dist &optional (new-point-count 30))
-  (let* ((cell-size (/ min-dist (sqrt 2)))
-	(grid (make-array (list (ceiling h cell-size)
-				(ceiling w cell-size))
-			  :element-type 'fixnum
-			  :initial-element -1))
-	(points (make-array 10000
-			    :element-type 'vec
-			    :initial-element (v)
-			    :adjustable t
-			    :fill-pointer 0))
-	(process ())
-	(output (make-array 1000
+(defmacro make-adjustable (type init)
+  `(make-array 1000 :element-type ',type :initial-element ,init
+	       :adjustable t :fill-pointer 0))
+
+(defun make-random-point ()
+  (v 0s0 (- (random 2s0) 1s0) (- (random 2s0) 1s0)))
+
+(defparameter *candidates* (make-random-queue))
+(defparameter *points* (make-adjustable vec (v)))
+(defparameter *grid* (make-array (list 1 1 1) :element-type 'fixnum))
+(defparameter *points-per-cell* 9)
+
+(defun print-grid (&key count)
+  (destructuring-bind (h w n)
+      (array-dimensions *grid*)
+    (dotimes (j h)
+     (dotimes (i w)
+       (format t "~1a" (if (= -1 (aref *grid* j i 0))
+			   "." (if count
+				   (loop for k below *points-per-cell* count
+					(/= -1 (aref *grid* j i k)))
+				   "x"))))
+     (terpri))))
+
+#+nil
+(print-grid :count t)
+
+(defun get-grid-size (radius)
+  (max 2 (ceiling (/ 2s0 (* 4s0 radius)))))
+
+#+nil
+(progn
+  (run .06s0)
+  (print-grid :count t))
+#+nil
+(get-grid-size .1)
+
+(defun make-grid (radius)
+  (let ((grid-size (get-grid-size radius)))
+   (setf *grid* (make-array (list grid-size grid-size *points-per-cell*)
 			    :element-type 'fixnum
-			    :initial-element -1
-			    :adjustable t
-			    :fill-pointer 0)))
-    (labels ((image->grid (p)
-	       (declare (vec p))
-	       (the vec 
-		 (v 0
-		    (floor (vy p) cell-size)
-		    (floor (vx p) cell-size))))
-	     (make-random-point (p &optional (mindist nil))
-	       (declare (vec p)
-			((or null num) mindist))
-	       (let ((radius (+ (* 2 min-dist) 
-				(if mindist
-				    (random mindist)
-				    0s0)))
-		     (angle (random (coerce (* 2 pi) 'num))))
-		 (the vec
+			    :initial-element -1))))
+
+
+
+(define-condition point-outside-grid () ())
+
+(defun get-grid-point (v)
+  (declare (vec v))
+  (destructuring-bind (h w n) (array-dimensions *grid*)
+    (declare (ignore n))
+    (let ((i (floor (* .5 w (1+ (vx v)))))
+	  (j (floor (* .5 h (1+ (vy v))))))
+      (unless (and (< 0 i w) (< 0 j h))
+	(signal 'point-outside-grid))
+      (the vec (v 0 j i)))))
+
+(defun get-point (index)
+  (aref *points* index))
+
+(defun add-to-grid (v ind)
+  (declare (vec v))
+  (let* ((gp (handler-case (get-grid-point v)
+	       (point-outside-grid ()
+		 (format t "ignoring point ~a~%" v)
+		 (return-from add-to-grid nil))))
+	 (i (floor (vx gp)))
+	 (j (floor (vy gp))))
+    (dotimes (k *points-per-cell*)
+      (when (= -1 (aref *grid* j i k))
+	(setf (aref *grid* j i k) ind)
+	(return))
+      (when (= k (1- *points-per-cell*))
+	(error "grid overflowed max points per cell")))
+    t))
+
+#+nil
+(run)
+(defun add-point (p)
+  (declare (vec p))
+  (let ((ind (vector-push-extend p *points*)))
+    (if (add-to-grid p ind)
+	(push-random ind *candidates*)
+	(progn
+	  (vector-pop *points*)
+	  nil))))
+
+(defgeneric find-neighbour-ranges (ranges index radius))
+(defmethod find-neighbour-ranges ((r ranges) index radius)
+  (declare (fixnum index)
+	   (num radius))
+  (let* ((candidate (get-point index))
+	 (range2 (* 4 4 radius radius))
+	 (grid-size (array-dimension *grid* 1))
+	 (grid-cell-size (/ 2 grid-size))
+	 (n (max (floor grid-size 2) 
+		 (ceiling (* 2 radius) grid-size)))
+	 (gp (get-grid-point candidate))
+	 (gx (vx gp))
+	 (gy (vy gp))
+	 (xside (if (< (* .5 grid-cell-size)
+		       (- (vx candidate) (- (* gx grid-cell-size) 1)))
+		    1 0))
+	 (yside (if (< (* .5 grid-cell-size)
+		       (- (vy candidate) (- (* gy grid-cell-size) 1)))
+		    1 0)))
+    (loop for j from (- n) upto n do
+	 (let ((iy (cond ((= j 0) yside)
+			 ((= j 1) 0)
+			 (t 1))))
+	   (loop for i from (- n) upto n do
+		(let* ((ix (cond ((= i 0) xside)
+				 ((= i 1) 0)
+				 (t 1)))
+		      ;; offset to closes cell
+		      (dx (- (vx candidate)
+			     (- (* (+ gx ix i) grid-cell-size) 1)))
+		      (dy (- (vy candidate)
+			     (- (* (+ gy iy j) grid-cell-size) 1))))
+		  (when (< (+ (* dx dx) (* dy dy))
+			   range2)
+		    (let ((cx (floor (mod (+ gx i grid-size) grid-size)))
+			  ;; make sure the range of cx is 0 .. grid-size-1
+			  (cy (floor (mod (+ gy j grid-size) grid-size))))
+		      (dotimes (k *points-per-cell*)
+			(declare ((simple-array fixnum 3) *grid*))
+			(let ((ind (aref *grid* cy cx k)))
+			  (declare (fixnum ind))
+			  (if (= -1 ind)
+			      (return)
+			      (if (/= ind index)
+				  (let* ((pt (get-point ind))
+					(v (.- pt candidate))
+					(dist2 (dot v v)))
+				    (when (< dist2 range2)
+				      (let* ((d (sqrt dist2))
+					     (angle (atan (vy v) (vx v)))
+					     (theta (acos (* .25s0 (/ d radius)))))
+					(subtract r (- angle theta) 
+						  (+ angle theta)))))))))))))))))
+#+nil
+(progn 
+  (run .03)
+  (print-grid :count 1))
+
+(defgeneric make-random-angle (ranges))
+(defmethod make-random-angle ((r ranges))
+  (let ((n (length (mi r))))
+    (when (= n 0)
+      (error "range is empty"))
+    (let* ((i (random n))
+	   (min (aref (mi r) i))
+	   (max (aref (ma r) i)))
+      (the num (+ min (random (- max min)))))))
+
+(defun make-periphery-point (v angle radius)
+  (declare (vec v)
+	   (num angle radius))
+  (the vec
+    (.+ v (v 0 (* 2 radius (sin angle))
+	     (* 2 radius (cos angle))))))
+
+(defun generate-poisson2 (radius)
+  (setf
+   *candidates* (make-random-queue)
+   *points* (make-adjustable vec (v)))
+  (make-grid radius)
+  (loop until (add-point (make-random-point)))
+  (loop while (< 0 (length *candidates*)) do
+       (let* ((index (pop-random *candidates*))
+	      (candidate (get-point index))
+	      (rl (make-ranges))
+	      (pi/3 #.(coerce (/ pi 3) 'num))
+	      (max-tries 20))
+	 (find-neighbour-ranges rl index radius)
+	 (loop while (and (< 0 (length (mi rl)))
+			  (< 0 max-tries)) do
+	      (let* ((angle (make-random-angle rl)) 
+		     (pt (make-periphery-point
+			  candidate angle radius)))
+		(decf max-tries)
+		(when (add-point pt)
+		  (subtract rl (- angle pi/3) (+ angle pi/3)))
+		(format t "~a~%" (list 'length (length (mi rl))))))))
+  *points*)
+#+nil
+(progn
+  (run .08)
+  (print-grid :count t))
+#+nil
+(generate-poisson2 .1s0)
+
+#+nil
+(defun generate-poisson (radius)
+    (let* ((grid-size (max 2 (ceiling 2 (* 4 radius))))
+	   (cell-size (/ 2s0 grid-size))
+	   (max-points-per-cell 9)
+	   (grid (make-array (list grid-size grid-size max-points-per-cell)
+			     :element-type 'fixnum
+			     :initial-element -1))
+	   (points (make-array 10000
+			       :element-type 'vec
+			       :initial-element (v)
+			       :adjustable t
+			       :fill-pointer 0))
+	   (process (make-random-queue))
+	   (output (make-array 1000
+			       :element-type 'fixnum
+			       :initial-element -1
+			       :adjustable t
+			       :fill-pointer 0)))
+      (labels ((image->grid (p)
+		 (declare (vec p))
+		 (the vec 
 		   (v 0
-		      (+ (vy p) (* radius (sin angle)))
-		      (+ (vx p) (* radius (cos angle)))))))
-	     (point-collides-p (p)
-	       (declare (vec p))
-	       (the boolean
-		 (let ((gp (image->grid p)))
-		   (loop for j from -2 upto 2 do
-			(loop for i from -2 upto 2 do
-			     (let* ((x (floor (vx gp)))
-				    (y (floor (vy gp)))
-				    (ind (aref-circ grid (+ y j) (+ x i))))
-			       (unless (= -1 ind)
-				 (format t "found circ ~a~%"
-					 (list ind x y process))
-				 (when (< min-dist (norm (.- p (aref points ind))))
-				   (return-from point-collides-p t))))))))))
-      (let ((first-point (v 0 
-			    (random (* 1s0 h)) 
-			    (random (* 1s0 w))))
-	    (ind 0)) 
-	;; store the first point in all containers
-	(vector-push-extend first-point points)
-	(vector-push-extend ind output)
-	(push ind process)
-	(let ((q (image->grid first-point)))
-	  (format t "first point ~a~%" (list first-point q ind))
-	  (setf (aref grid (floor (vy q)) (floor (vx q))) 
-	       ind)))
-      (loop while process do
-	   (let* ((np (length process))
-		  (point (elt process (if (= 0 np) 
-					 0
-					 (random np)))))
-	     (setf process (remove point process))
-	     (dotimes (i new-point-count)
-	       (let ((new-point (make-random-point (aref points point))))
-		 (when (and (in-rectangle-p new-point (v) (v 0 h w))
-			    (not (point-collides-p new-point)))
-		   (vector-push-extend new-point points)
-		   (let ((cur (fill-pointer points)))
-		     (push cur process)
-		     (vector-push-extend cur output)
-		     (let ((q (image->grid new-point)))
-		       (setf (aref grid (floor (vy q))
-				   (floor (vx q)))
-			     cur))))))))
+		      (floor (* .5 (+ 1 (vy p)) grid-size))
+		      (floor (* .5 (+ 1 (vx p)) grid-size)))))
+	       (store-grid (p ind)
+		 (let* ((q (image->grid p))
+			(k 0))
+		   (loop while (/= -1 (aref-circ grid q k)) do
+			(incf k))
+		   (format t "~a~%" (list 'store-grid p q k ind))
+		   (assert (< k max-points-per-cell))
+		   (setf (aref-circ grid q k) ind)))
+	       (store (p)
+		 ;; store the point in all containers
+		 (let ((cur (fill-pointer points)))
+		   (format t "store ~a~%" (list 'point p 'into cur))
+		   (vector-push-extend p points)
+		   (vector-push-extend cur output)
+		   (push-random cur process)
+		   (store-grid p cur)
+		   (format t "~a~%" (list 'output output)))))
+	(store (v 0 (- (random 2s0) 1) (- (random 2s0) 1)))
+	(format t "~a~%" (list 'first-point 'process process))
+	(let ((cur-index nil))
+	  (loop while (setf cur-index (pop-random process)) do
+	      (format t "point ~a~%" cur-index)
+	       (let* ((cur-point (aref points cur-index)))
+		(when (in-rectangle-p cur-point (v 0 -1 -1) (v 0 1 1))
+		  (let ((gp (image->grid cur-point))
+			(r (make-ranges)))
+		    (format t "bevor ji loop ~a~%" (list 'process process))
+		    (loop for j from -1 upto 1 do
+			 (loop for i from -1 upto 1 do
+			      (dotimes (k max-points-per-cell)
+				(let ((c (aref-circ grid (.+ gp (v 0 j i)) k)))
+				  (when (= c -1)
+				    (return 'blub))
+				  ;; found neighbour that potentially intersects
+				  (format t "neighbour ~a~%" (list c))
+				  (let* ((nex-point (aref points c))
+					 (diff (.- cur-point nex-point))
+					 (d (norm diff)))
+				    (when (< d (* 4 radius)) 
+				      ;; it actually intersects
+				      (let ((theta (atan (vy diff) (vx diff)))
+					    (gamma (acos (/ d (* 4 radius)))))
+					(subtract r (- theta gamma) (+ theta gamma)))))))))
+		    (FORMAT T "intersection ~A" r)
+		    (loop while (< 0 (length (mi r)))
+		       do
+		       (format t "~a~%" (list 'while (length (mi r))))
+		       (let* ((n (length (mi r)))
+			      (rnd (random n))
+			      (min (aref (mi r) rnd))
+			      (max (aref (ma r) rnd))
+			      (alpha (+ min (random (- max min))))
+			      (pi/3 #.(coerce (/ pi 3) 'num)))
+			 (subtract r (- alpha pi/3) (+ alpha pi/3))
+			 (store (.+ cur-point 
+				    (v 0 
+				       (* 2 radius (sin alpha))
+				       (* 2 radius (cos alpha)))))))))))))
       (let ((m (make-array (length output)
 			   :element-type 'vec
 			   :initial-element (v))))
 	(dotimes (i (length m))
 	  (setf (aref m i) (aref points (aref output i))))
-	m))))
+	m)))
+#+nil
+(generate-poisson .01s0)
 
 
-(let ((m (make-array 10 :element-type 'single-float
-		     :fill-pointer 0 :adjustable t)))
-  (vector-push-extend 3s0 m)
-  (vector-push-extend 33s0 m)
-  (list (fill-pointer m) m))
 
+
+;; choose grid size so that 4*radius searches only adjacent cells
+;grid-size (max 2 (ceiling 2 (* 4 radius)))
+;grid-cell-size (/ 2 grid-size)
+;max-points-per-cell 9
+#+nil
 (progn
- (defun run ()
-   (with-open-file (s "/dev/shm/o.asy" :direction :output
-		      :if-exists :supersede
-		      :if-does-not-exist :create)
-     (macrolet ((asy (str &rest rest)
-		  `(progn
-		     (format s ,str ,@rest)
-		     (terpri s))))
-       (asy "import graph;size(400,400);")
-       (let* ((r 10s0)
-	      (m (generate-poisson 400 400 r 10)))
-	 (dotimes (i (length m))
-	   (asy "draw(Circle((~f,~f),~f));"
-		(vx (aref m i)) (vy (aref m i))
-		r))))))
- (run))
+  (defun run (&optional (radius .1s0))
+    (with-open-file (s "/dev/shm/o.asy" :direction :output
+		       :if-exists :supersede
+		       :if-does-not-exist :create)
+      (macrolet ((asy (str &rest rest)
+		       `(progn
+			  (format s ,str ,@rest)
+			  (terpri s))))
+	    (asy "import graph;size(400,400);")
+	    (let* ((r radius)
+		   (m (generate-poisson2 r))
+		   (gs (get-grid-size r))
+		   (cs (/ 2 gs)))
+	      (loop for i from -1 upto 1 by cs do
+		   (asy "draw((-1,~f)--(1,~f));" i i))
+	      (loop for i from -1 upto 1 by cs do
+		   (asy "draw((~f,-1)--(~f,1));" i i))
+	      (dotimes (i (length m))
+		(let ((e (aref m i)))
+		 (asy "draw(Circle((~f,~f),~f),red);"
+		      (vx e) (vy e)
+		      r)
+		 (asy "draw(Circle((~f,~f),~f),gray);"
+		      (vx e) (vy e)
+		      (* 2 r))))
+	      #+nil(dotimes (i (length m))
+		     (asy "draw(Circle((~f,~f),~f));"
+		     (vx (aref m i)) (vy (aref m i))
+		     r))))))
+      (run))
