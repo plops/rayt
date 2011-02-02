@@ -1,4 +1,4 @@
-(declaim (optimize (speed 0) (safety 3) (debug 3)))
+(declaim (optimize (speed 3) (safety 1) (debug 1)))
 
 (deftype num ()
   `single-float)
@@ -385,7 +385,7 @@ direction of excitation light)."
   (declare ((array fixnum 1) queue))
   (let* ((n (length queue))
 	 (i (if (= 0 n) 
-		(return-from pop-random nil)
+		(the null (return-from pop-random nil))
 		(random n)))
 	 (e (aref queue i)))
     (setf (aref queue i) (aref queue (1- n)))
@@ -407,7 +407,7 @@ direction of excitation light)."
        :type (array num 1))))
 
 (defun make-ranges (&optional (min 0s0) (max (coerce (* 2 pi) 'num)))
-  (let ((mi (make-array 8 :element-type 'num 
+  (let ((mi (make-array 8 :element-type 'num ;; NOTE: this conses a bit 
 			:initial-element 0s0 
 			:fill-pointer 0
 			:adjustable t))
@@ -542,15 +542,18 @@ direction of excitation light)."
 (defparameter *points* (make-adjustable vec (v)))
 (defparameter *grid* (make-array (list 1 1 1) :element-type 'fixnum))
 (defparameter *points-per-cell* 9)
+(declaim ((array fixnum 1) *candidates)
+	 ((array vec 1) *points*)
+	 ((simple-array fixnum 3) *grid*)
+	 (fixnum *points-per-cell*))
 
 (defun print-grid (&key count)
-  (destructuring-bind (h w n)
-      (array-dimensions *grid*)
+  (destructuring-bind (h w n) (array-dimensions *grid*)
     (dotimes (j h)
      (dotimes (i w)
        (format t "~1a" (if (= -1 (aref *grid* j i 0))
 			   "." (if count
-				   (loop for k below *points-per-cell* count
+				   (loop for k below n count
 					(/= -1 (aref *grid* j i k)))
 				   "x"))))
      (terpri))))
@@ -559,7 +562,9 @@ direction of excitation light)."
 (print-grid :count t)
 
 (defun get-grid-size (radius)
-  (max 2 (ceiling (/ 2s0 (* 4s0 radius)))))
+  (declare (num radius))
+  (the fixnum
+    (max 2 (ceiling (/ 2s0 (* 4s0 radius))))))
 
 (defun make-grid (radius)
   (let ((grid-size (get-grid-size radius)))
@@ -567,20 +572,14 @@ direction of excitation light)."
 			    :element-type 'fixnum
 			    :initial-element -1))))
 
-(define-condition point-outside-grid () ())
-
 (defun get-grid-point (v)
   (declare (vec v))
   (destructuring-bind (h w n) (array-dimensions *grid*)
     (declare (ignore n))
     (let* ((x (vx v))
 	   (y (vy v))
-	   (i (floor (* .5 w (1+ x))))
-	   (j (floor (* .5 h (1+ y)))))
-      (unless (and (<= -1s0 x 1s0) (<= -1s0 y 1s0))
-	(error "point not in box"))
-      (unless (and (<= 0 i (1- w)) (<= 0 j (1- h)))
-	(signal 'point-outside-grid))
+	   (i (floor (* w (1+ x)) 2))
+	   (j (floor (* h (1+ y)) 2)))
       (the vec (v 0 j i)))))
 
 (defun get-point (index)
@@ -588,9 +587,7 @@ direction of excitation light)."
 
 (defun add-to-grid (v ind)
   (declare (vec v))
-  (let* ((gp (handler-case (get-grid-point v)
-	       (point-outside-grid ()
-		 (return-from add-to-grid nil))))
+  (let* ((gp (get-grid-point v))
 	 (i (floor (vx gp)))
 	 (j (floor (vy gp))))
     (dotimes (k *points-per-cell*)
@@ -609,11 +606,8 @@ direction of excitation light)."
 (defun add-point (p)
   (declare (vec p))
   (let ((ind (vector-push-extend p *points*)))
-    (if (add-to-grid p ind)
-	(push-random ind *candidates*)
-	(progn
-	  (vector-pop *points*)
-	  nil))))
+    (add-to-grid p ind)
+    (push-random ind *candidates*)))
 
 (defun get-tiled (v)
   (declare (vec v))
@@ -710,21 +704,17 @@ direction of excitation light)."
        (let* ((index (pop-random *candidates*))
 	      (candidate (get-point index))
 	      (rl (make-ranges))
-	      (pi/3 #.(coerce (/ pi 3) 'num))
-	      (max-tries 3))
+	      (pi/3 #.(coerce (/ pi 3) 'num)))
 	 (push candidate *center*)
 	 (find-neighbour-ranges rl index radius)
-	 (loop while (and (< 0 (length (mi rl)))
-			  (< 0 max-tries)) do
+	 (loop while (< 0 (length (mi rl)))
+	    do
 	      (let* ((angle (make-random-angle rl)) 
 		     (pt (make-periphery-point
 			  candidate angle radius)))
-		(if (add-point pt)
-		  ;; only subtract when the point was accepted
-		    (subtract rl (- angle pi/3) (+ angle pi/3))
-		    (decf max-tries))))))
-  *points*)
-
+		(add-point pt)
+		(subtract rl (- angle pi/3) (+ angle pi/3)))))))
+#+nil
 (defun run (&optional (radius .1s0))
   (with-open-file (s "/dev/shm/o.asy" :direction :output
 		     :if-exists :supersede
@@ -755,7 +745,7 @@ direction of excitation light)."
 	;; (loop for i from -1 upto 1 by cs do
 	;;      (asy "draw((~f,-1)--(~f,1));" i i))
 	
-	(dotimes (i (length m))
+	(dotimes (i (length *points*))
 	  (let ((e (aref m i)))
 	   (asy "dot((~f,~f));" (vx e) (vy e))))
 	
@@ -767,6 +757,8 @@ direction of excitation light)."
 	     (asy "label(\"~d\",(~f,~f),NW);"
 		  i (vx e) (vy e)))))))))
 
+#+nil
+(time (generate-poisson .01s0))
 #+nil
 (time
  (progn
