@@ -529,59 +529,7 @@ direction of excitation light)."
 (let ((r (make-ranges)))
     (subtract r 1.1s0 1.2s0)
     (subtract r 0s0 2s0)
-    (subtract r 2.3s0 2.5s0)
-    (subtract r 2.6s0 2.63s0)
-    (subtract r 0s0 (coerce (* 2 pi) 'num))
     r)
-#+nil
-(let ((m (make-array 3 :element-type 'fixnum :adjustable t :fill-pointer 0)))
-  (vector-push 3 m)
-  (vector-push 4 m)
-  (vector-push 5 m)
-  (vector-push 6 m)
-  (vector-pop m)
-  m)
-
-
-(defun torus (i x)
-  (declare (fixnum i x))
-  (the fixnum
-   (cond ((< i 0) (+ i x))
-	 ((<= x i) (- i x))
-	 (t i))))
-
-(defun aref-circ (a v k)
-  (declare ((simple-array fixnum 3) a)
-	   (fixnum k)
-	   (vec v))
-  (destructuring-bind (y x n) (array-dimensions a)
-    (declare (ignore n))
-    (let ((ii (torus (floor (vx v)) x))
-	  (jj (torus (floor (vy v)) y)))
-      (aref a jj ii k))))
-
-(defun (setf aref-circ) (newvalue a v k)
-  (declare (fixnum newvalue)
-	   ((simple-array fixnum 3) a)
-	   (vec v)
-	   (fixnum k))
-  (destructuring-bind (y x n) (array-dimensions a)
-    (declare (ignore n))
-    (let ((ii (torus (floor (vx v)) x))
-	  (jj (torus (floor (vy v)) y)))
-      (setf (aref a jj ii k) newvalue))))
-
-(defun in-rectangle-p (p pmin pmax)
-  (declare (vec p pmin pmax))
-  (the boolean
-   (progn
-     (loop for i from 1 below 3 do
-	  (unless (< (aref pmin i) (aref p i) (aref pmax i))
-	    (return-from in-rectangle-p nil)))
-     t)))
-
-#+nil
-(in-rectangle-p (v 0 7.4 9.2) (v) (v 0 12 12))
 
 (defmacro make-adjustable (type init)
   `(make-array 1000 :element-type ',type :initial-element ,init
@@ -611,22 +559,13 @@ direction of excitation light)."
 (print-grid :count t)
 
 (defun get-grid-size (radius)
-  (max 2 (ceiling (/ (* (sqrt 2s0) 2s0) (* 4s0 radius)))))
-
-#+nil
-(progn
-  (run .08s0)
-  (print-grid :count t))
-#+nil
-(get-grid-size .1)
+  (max 2 (ceiling (/ 2s0 (* 4s0 radius)))))
 
 (defun make-grid (radius)
   (let ((grid-size (get-grid-size radius)))
    (setf *grid* (make-array (list grid-size grid-size *points-per-cell*)
 			    :element-type 'fixnum
 			    :initial-element -1))))
-
-
 
 (define-condition point-outside-grid () ())
 
@@ -651,7 +590,6 @@ direction of excitation light)."
   (declare (vec v))
   (let* ((gp (handler-case (get-grid-point v)
 	       (point-outside-grid ()
-		 (format t "ignoring ~a~%" (list 'ind ind 'v v))
 		 (return-from add-to-grid nil))))
 	 (i (floor (vx gp)))
 	 (j (floor (vy gp))))
@@ -668,18 +606,13 @@ direction of excitation light)."
   (run 0.1)
   (print-grid :count t))
 
-(defparameter *gone* ())
-(defparameter *center* ())
-
 (defun add-point (p)
   (declare (vec p))
   (let ((ind (vector-push-extend p *points*)))
     (if (add-to-grid p ind)
 	(push-random ind *candidates*)
 	(progn
-	  (push
-	   (vector-pop *points*)
-	   *gone*)
+	  (vector-pop *points*)
 	  nil))))
 
 (defun get-tiled (v)
@@ -688,7 +621,7 @@ direction of excitation light)."
 	 (y (vy v))
 	 (xx (cond ((< x -1s0) (+ 2s0 x))
 		   ((< 1s0 x) (- x 2s0))
-		   (t x))) ;; torus 
+		   (t x)))
 	 (yy (cond ((< y -1s0) (+ 2s0 y))
 		   ((< 1s0 y) (- y 2s0))
 		   (t y))))
@@ -748,10 +681,6 @@ direction of excitation light)."
 					(subtract r
 						  (- angle theta) 
 						  (+ angle theta)))))))))))))))))
-#+nil
-(progn 
-  (run .1)
-  (print-grid :count 1))
 
 (defgeneric make-random-angle (ranges))
 (defmethod make-random-angle ((r ranges))
@@ -771,11 +700,7 @@ direction of excitation light)."
 	 (y (* 2 radius (sin angle))))
     (the vec (get-tiled (.+ v (v 0 y x))))))
 
-
-#+nil
-(run .08)
-
-(defun generate-poisson2 (radius)
+(defun generate-poisson (radius)
   (setf
    *candidates* (make-random-queue)
    *points* (make-adjustable vec (v)))
@@ -787,7 +712,6 @@ direction of excitation light)."
 	      (rl (make-ranges))
 	      (pi/3 #.(coerce (/ pi 3) 'num))
 	      (max-tries 3))
-	 (format t "generator ~a" (list 'ind index))
 	 (push candidate *center*)
 	 (find-neighbour-ranges rl index radius)
 	 (loop while (and (< 0 (length (mi rl)))
@@ -798,115 +722,8 @@ direction of excitation light)."
 		(if (add-point pt)
 		  ;; only subtract when the point was accepted
 		    (subtract rl (- angle pi/3) (+ angle pi/3))
-		    (decf max-tries))))
-	 (format t " ~a~%"  (list 'cand *candidates*))))
+		    (decf max-tries))))))
   *points*)
-#+nil
-(progn
-  (run .12)
-  (print-grid :count t))
-#+nil
-(generate-poisson2 .1s0)
-
-#+nil
-(defun generate-poisson (radius)
-    (let* ((grid-size (max 2 (ceiling 2 (* 4 radius))))
-	   (cell-size (/ 2s0 grid-size))
-	   (max-points-per-cell 9)
-	   (grid (make-array (list grid-size grid-size max-points-per-cell)
-			     :element-type 'fixnum
-			     :initial-element -1))
-	   (points (make-array 10000
-			       :element-type 'vec
-			       :initial-element (v)
-			       :adjustable t
-			       :fill-pointer 0))
-	   (process (make-random-queue))
-	   (output (make-array 1000
-			       :element-type 'fixnum
-			       :initial-element -1
-			       :adjustable t
-			       :fill-pointer 0)))
-      (labels ((image->grid (p)
-		 (declare (vec p))
-		 (the vec 
-		   (v 0
-		      (floor (* .5 (+ 1 (vy p)) grid-size))
-		      (floor (* .5 (+ 1 (vx p)) grid-size)))))
-	       (store-grid (p ind)
-		 (let* ((q (image->grid p))
-			(k 0))
-		   (loop while (/= -1 (aref-circ grid q k)) do
-			(incf k))
-		   (format t "~a~%" (list 'store-grid p q k ind))
-		   (assert (< k max-points-per-cell))
-		   (setf (aref-circ grid q k) ind)))
-	       (store (p)
-		 ;; store the point in all containers
-		 (let ((cur (fill-pointer points)))
-		   (format t "store ~a~%" (list 'point p 'into cur))
-		   (vector-push-extend p points)
-		   (vector-push-extend cur output)
-		   (push-random cur process)
-		   (store-grid p cur)
-		   (format t "~a~%" (list 'output output)))))
-	(store (v 0 (- (random 2s0) 1) (- (random 2s0) 1)))
-	(format t "~a~%" (list 'first-point 'process process))
-	(let ((cur-index nil))
-	  (loop while (setf cur-index (pop-random process)) do
-	      (format t "point ~a~%" cur-index)
-	       (let* ((cur-point (aref points cur-index)))
-		(when (in-rectangle-p cur-point (v 0 -1 -1) (v 0 1 1))
-		  (let ((gp (image->grid cur-point))
-			(r (make-ranges)))
-		    (format t "bevor ji loop ~a~%" (list 'process process))
-		    (loop for j from -1 upto 1 do
-			 (loop for i from -1 upto 1 do
-			      (dotimes (k max-points-per-cell)
-				(let ((c (aref-circ grid (.+ gp (v 0 j i)) k)))
-				  (when (= c -1)
-				    (return 'blub))
-				  ;; found neighbour that potentially intersects
-				  (format t "neighbour ~a~%" (list c))
-				  (let* ((nex-point (aref points c))
-					 (diff (.- cur-point nex-point))
-					 (d (norm diff)))
-				    (when (< d (* 4 radius)) 
-				      ;; it actually intersects
-				      (let ((theta (atan (vy diff) (vx diff)))
-					    (gamma (acos (/ d (* 4 radius)))))
-					(subtract r (- theta gamma) (+ theta gamma)))))))))
-		    (FORMAT T "intersection ~A" r)
-		    (loop while (< 0 (length (mi r)))
-		       do
-		       (format t "~a~%" (list 'while (length (mi r))))
-		       (let* ((n (length (mi r)))
-			      (rnd (random n))
-			      (min (aref (mi r) rnd))
-			      (max (aref (ma r) rnd))
-			      (alpha (+ min (random (- max min))))
-			      (pi/3 #.(coerce (/ pi 3) 'num)))
-			 (subtract r (- alpha pi/3) (+ alpha pi/3))
-			 (store (.+ cur-point 
-				    (v 0 
-				       (* 2 radius (sin alpha))
-				       (* 2 radius (cos alpha)))))))))))))
-      (let ((m (make-array (length output)
-			   :element-type 'vec
-			   :initial-element (v))))
-	(dotimes (i (length m))
-	  (setf (aref m i) (aref points (aref output i))))
-	m)))
-#+nil
-(generate-poisson .01s0)
-
-
-
-
-;; choose grid size so that 4*radius searches only adjacent cells
-;grid-size (max 2 (ceiling 2 (* 4 radius)))
-;grid-cell-size (/ 2 grid-size)
-;max-points-per-cell 9
 
 (defun run (&optional (radius .1s0))
   (with-open-file (s "/dev/shm/o.asy" :direction :output
@@ -920,44 +737,39 @@ direction of excitation light)."
 		    (terpri s))))
       (asy "import graph;size(400,400);")
       (let* ((r radius)
-	     (m (generate-poisson2 r))
+	     (m (generate-poisson r))
 	     (gs (get-grid-size r))
 	     (cs (/ 2 gs)))
-	(dotimes (i (length m))
-	  (let ((e (aref m i)))
-	    (asy "fill(Circle((~f,~f),~f),gray(.8));"
-		 (vx e) (vy e)
-		 (* 2 r))))
-	(dotimes (i (length m))
-	  (let ((e (aref m i)))
-	    (asy "draw(Circle((~f,~f),~f),gray(.6));"
-		 (vx e) (vy e)
-		 (* 2 r))))
-	(loop for i from -1 upto 1 by cs do
-	     (asy "draw((-1,~f)--(1,~f));" i i))
-	(loop for i from -1 upto 1 by cs do
-	     (asy "draw((~f,-1)--(~f,1));" i i))
+	;; (dotimes (i (length m))
+	;;   (let ((e (aref m i)))
+	;;     (asy "fill(Circle((~f,~f),~f),gray(.8));"
+	;; 	 (vx e) (vy e)
+	;; 	 (* 2 r))))
+	;; (dotimes (i (length m))
+	;;   (let ((e (aref m i)))
+	;;     (asy "draw(Circle((~f,~f),~f),gray(.6));"
+	;; 	 (vx e) (vy e)
+	;; 	 (* 2 r))))
+ 	;; (loop for i from -1 upto 1 by cs do
+	;;      (asy "draw((-1,~f)--(1,~f));" i i))
+	;; (loop for i from -1 upto 1 by cs do
+	;;      (asy "draw((~f,-1)--(~f,1));" i i))
 	
-	(let ((n (length m)))
+	(dotimes (i (length m))
+	  (let ((e (aref m i)))
+	   (asy "dot((~f,~f));" (vx e) (vy e))))
+	
+	#+nil (let ((n (length m)))
 	 (dotimes (i n)
 	   (let ((e (aref m i)))
 	     (asy "fill(Circle((~f,~f),~f),gray(.4));"
 		  (vx e) (vy e) r)
 	     (asy "label(\"~d\",(~f,~f),NW);"
-		  i (vx e) (vy e)))))
-	
-	(dolist (e *gone*)
-	  (asy "dot((~f,~f));" (vx e) (vy e)))
-
-	(dolist (e *center*)
-	  (asy "dot((~f,~f),red);" (vx e) (vy e)))
-
-	#+nil(dotimes (i (length m))
-	       (asy "draw(Circle((~f,~f),~f));"
-		    (vx (aref m i)) (vy (aref m i))
-		    r))))))
+		  i (vx e) (vy e)))))))))
 
 #+nil
-(progn
-  (run .12s0)
-  (print-grid :count t))
+(time
+ (progn
+   (run .01s0)
+   #+nil (print-grid :count t)
+   (terpri)))
