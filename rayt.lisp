@@ -385,7 +385,7 @@ direction of excitation light)."
   (declare ((array fixnum 1) queue))
   (let* ((n (length queue))
 	 (i (if (= 0 n) 
-		(the null (return-from pop-random nil))
+		(return-from pop-random nil)
 		(random n)))
 	 (e (aref queue i)))
     (setf (aref queue i) (aref queue (1- n)))
@@ -626,33 +626,39 @@ direction of excitation light)."
   (declare (fixnum index)
 	   (num radius))
   (let* ((candidate (get-point index))
-	 (range2 (* 4 4 radius radius))
+	 (range2 (* 4s0 4s0 radius radius))
 	 (grid-size (array-dimension *grid* 1)) 
-	 (grid-cell-size (/ 2 grid-size))
-	 (n (max (floor grid-size 2) 
-		 (ceiling (* 2 radius) grid-size)))
+	 (grid-cell-size (/ 2s0 grid-size))
+	 (n (max (floor grid-size 2s0) 
+		 (ceiling (* 4s0 radius) grid-cell-size)))
 	 (gp (get-grid-point candidate))
-	 (gx (vx gp))
-	 (gy (vy gp))
+	 (gx (floor (vx gp)))
+	 (gy (floor (vy gp)))
 	 (xside (if (< (* .5 grid-cell-size)
 		       (- (vx candidate) (- (* gx grid-cell-size) 1)))
 		    1 0))
 	 (yside (if (< (* .5 grid-cell-size)
 		       (- (vy candidate) (- (* gy grid-cell-size) 1)))
 		    1 0)))
+    (declare (fixnum n gx gy)
+	     (num grid-cell-size))
     (loop for j from (- n) upto n do
 	 (let ((iy (cond ((= j 0) yside)
 			 ((= j 1) 0)
 			 (t 1))))
+	   (declare (fixnum iy))
 	   (loop for i from (- n) upto n do
 		(let* ((ix (cond ((= i 0) xside)
 				 ((= i 1) 0)
 				 (t 1)))
 		      ;; offset to closes cell
 		      (dx (- (vx candidate)
-			     (- (* (+ gx ix i) grid-cell-size) 1)))
+			     (* grid-cell-size (+ 0s0 gx ix i))
+			     -1s0))
 		      (dy (- (vy candidate)
-			     (- (* (+ gy iy j) grid-cell-size) 1))))
+			     (* grid-cell-size (+ 0s0 gy iy j))
+			     -1s0)))
+		  (declare (fixnum ix iy i j))
 		  (when (< (+ (* dx dx) (* dy dy))
 			   range2)
 		    (let ((cx (floor (mod (+ gx i grid-size) grid-size)))
@@ -668,10 +674,15 @@ direction of excitation light)."
 				  (let* ((pt (get-point ind))
 					 (v (get-tiled (.- pt candidate)))
 					 (dist2 (dot v v)))
+				    (declare ((single-float 0s0) dist2))
 				    (when (< dist2 range2)
 				      (let* ((d (sqrt dist2))
 					     (angle (atan (vy v) (vx v)))
-					     (theta (acos (* .25s0 (/ d radius)))))
+					     (arg (* .25s0 (/ d radius)))
+					     (theta (acos arg)))
+					(declare ((single-float 0s0) d)
+						 ((single-float 0s0 1s0) arg)
+						 (num angle theta))
 					(subtract r
 						  (- angle theta) 
 						  (+ angle theta)))))))))))))))))
@@ -712,9 +723,16 @@ direction of excitation light)."
 	      (let* ((angle (make-random-angle rl)) 
 		     (pt (make-periphery-point
 			  candidate angle radius)))
+		(declare (num angle))
 		(add-point pt)
 		(subtract rl (- angle pi/3) (+ angle pi/3)))))))
+(require :sb-sprof)
 #+nil
+(sb-sprof:with-profiling (:max-samples 1000
+				       :report :flat
+				       :loop nil)
+  (generate-poisson .01))
+
 (defun run (&optional (radius .1s0))
   (with-open-file (s "/dev/shm/o.asy" :direction :output
 		     :if-exists :supersede
@@ -727,9 +745,10 @@ direction of excitation light)."
 		    (terpri s))))
       (asy "import graph;size(400,400);")
       (let* ((r radius)
-	     (m (generate-poisson r))
-	     (gs (get-grid-size r))
-	     (cs (/ 2 gs)))
+;	     (gs (get-grid-size r))
+;	     (cs (/ 2 gs))
+	     )
+	(generate-poisson r)
 	;; (dotimes (i (length m))
 	;;   (let ((e (aref m i)))
 	;;     (asy "fill(Circle((~f,~f),~f),gray(.8));"
@@ -746,7 +765,7 @@ direction of excitation light)."
 	;;      (asy "draw((~f,-1)--(~f,1));" i i))
 	
 	(dotimes (i (length *points*))
-	  (let ((e (aref m i)))
+	  (let ((e (aref *points* i)))
 	   (asy "dot((~f,~f));" (vx e) (vy e))))
 	
 	#+nil (let ((n (length m)))
@@ -762,6 +781,6 @@ direction of excitation light)."
 #+nil
 (time
  (progn
-   (run .01s0)
+   (run .1s0)
    #+nil (print-grid :count t)
    (terpri)))
