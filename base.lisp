@@ -1,4 +1,6 @@
 (provide :base)
+#+ecl
+(make-package :base :use '(:cl))
 #.(unless (find-package :base)
   (make-package :base :use '(:cl)))
 (in-package :base)

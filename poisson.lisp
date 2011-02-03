@@ -1,10 +1,12 @@
 (provide :poisson)
+#+ecl (make-package :poisson :use '(:cl))
 #.(unless (find-package :poisson)
   (make-package :poisson :use '(:cl)))
 (in-package :poisson)
 (export '(generate-poisson))
 #.(unless (find-package :base)
   (load "base.lisp"))
+#+ecl (load "base")
 #.(use-package :base)
 
 

@@ -1,13 +1,23 @@
 (declaim (optimize (speed 3) (safety 1) (debug 1)))
 (provide :rayt)
+
+#+ecl (make-package :rayt :use '(:cl))
 #.(unless (find-package :rayt)
   (make-package :rayt :use '(:cl)))
+
 (in-package :rayt)
 (export '(refract))
+
+#+ecl  (load "poisson.lisp")
 #.(unless (find-package :poisson)
   (load "poisson.lisp"))
+
+#+ecl (use-package :base)
+#+ecl (use-package :poisson)
+
 #.(use-package :base)
 #.(use-package :poisson)
+
 
 (progn
   (declaim (ftype (function (num num num) (values num &optional))
@@ -46,7 +56,7 @@ axis. Coordinates in mm."
   (when (< focal-length height)
     (error 'height-smaller-than-focal-length))
   (let ((rat (/ height focal-length)))
-    (declare ((single-float 0s0 1s0) rat))
+    #-ecl (declare ((single-float 0s0 1s0) rat))
    (the num (asin rat))))
 #+nil
 (find-inverse-ray-angle 2.2 2.61)
@@ -224,7 +234,7 @@ direction of excitation light)."
 		incf-vec)
 	 (inline incf-vec))
 (defun incf-vec (img n v val)
-  (declare ((simple-array num 2) img)
+  #-ecl (declare ((simple-array num 2) img)
 	   (fixnum n) (vec v)
 	   (num val))
   (let* ((x (vx v))
@@ -237,9 +247,9 @@ direction of excitation light)."
 
 (defun write-pgm (filename img)
   (declare (simple-string filename)
-	   ((array (unsigned-byte 8) 2) img))
+	   #-ecl ((array (unsigned-byte 8) 2) img))
   (destructuring-bind (h w) (array-dimensions img)
-    (declare ((integer 0 65535) w h))
+    #-ecl (declare ((integer 0 65535) w h))
     (with-open-file (s filename
 		       :direction :output
 		       :if-exists :supersede
@@ -263,11 +273,6 @@ direction of excitation light)."
     img1))
 
 (defvar *pd* nil)
-#+nil
-(time
- (progn
-  (setf *pd* (generate-poisson .005s0))
-  nil))
 
 (defun run ()
  (let* ((f (find-focal-length 63s0))
@@ -302,6 +307,15 @@ direction of excitation light)."
      (dotimes (i (length buf1))
        (setf (aref buf1 i) (floor (* s (aref img1 i)))))
      (write-pgm "o.pgm" buf))))
+
+(time
+ (progn
+  (setf *pd* (generate-poisson .01s0))
+  nil))
+
+
+(time
+ (run))
 
 #+nil
 (time (dotimes (i 10) (run)))
