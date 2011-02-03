@@ -5,11 +5,11 @@
 (in-package :poisson)
 (export '(generate-poisson))
 #.(unless (find-package :base)
-  (load "base.lisp"))
+    (load "base.lisp"))
 #+ecl (load "base")
 #.(use-package :base)
 
-(declaim (optimize (speed 3) (safety 0) (debug 0)))
+(declaim (optimize (speed 3) (safety 2) (debug 2)))
 #+nil (declaim (optimize (speed 1) (safety 3) (debug 3)))
 
 
@@ -43,6 +43,7 @@
 (defgeneric reset (ranges &optional min max))
 (defmethod reset ((r ranges) &optional (min 0s0) (max +2pif+))
   (with-slots (mi ma n) r
+    (declare (fixnum n))
     #+nil (setf (fill-pointer mi) 0
 	  (fill-pointer ma) 0)
     (setf n 1)
@@ -66,6 +67,7 @@
 (defmethod delete-range ((r ranges) pos)
   (declare (fixnum pos))
   (with-slots (mi ma n) r
+    (declare (fixnum n))
     (when (< pos (- n 1))
       (loop for i from pos below n do
 	   (setf (aref mi i) (aref mi (1+ i)))
@@ -87,13 +89,14 @@
   (declare (num min max)
 	   (fixnum pos))
   (with-slots (mi ma n) r
+    (declare (fixnum n))
     (cond
       ((< pos n) ;; make space for one and move towards right
        (loop for i from (- n 1) downto pos do
-	    (setf (aref (mi r) (1+ i)) (aref (mi r) i)
-		  (aref (ma r) (1+ i)) (aref (ma r) i)))
-       (setf (aref (mi r) pos) min
-	     (aref (ma r) pos) max)
+	    (setf (aref mi (1+ i)) (aref mi i)
+		  (aref ma (1+ i)) (aref ma i)))
+       (setf (aref mi pos) min
+	     (aref ma pos) max)
        (incf n))
       ((= pos n)
        (setf (aref (mi r) n) min
@@ -106,60 +109,64 @@
 (defmethod subtract ((r ranges) min max)
   (declare (num min max))
   (assert (<= min max))
-  (let ((eps .000001s0))
-   (cond ((< +2pif+ min) 
-	  (subtract r (- min +2pif+) (- max +2pif+)))
-	 ((< max 0s0)
-	  (subtract r (+ min +2pif+) (+ max +2pif+)))
-	 ((< min 0s0)
-	  (subtract r 0s0 max)
-	  (subtract r (+ min +2pif+) +2pif+))
-	 ((< +2pif+ max)
-	  (subtract r min +2pif+)
-	  (subtract r 0s0 (- max +2pif+)))
-	 ((= 0 (n r) #+nil (fill-pointer (mi r)))
-	  nil)
-	 (t 
-	  (let ((pos 0))
-	    (if (< min (aref (mi r) 0))
-		(setf pos -1) ;; left has to go to front
-		(let ((lo 0)
-		      (mid 0)
-		      (hi (n r) #+nil(fill-pointer (mi r))))
-		  ;; binary search for segment whose mi is just smaller than min
-		  (loop while (< lo (- hi 1)) do
-		       (setf mid (floor (+ lo hi) 2))
-		       (if (< (aref (mi r) mid) min)
-			   (setf lo mid)
-			   (setf hi mid)))
-		  (setf pos lo)))
-	    (cond 
-	      ((= -1 pos) ;; left of all segments
-	       (setf pos 0))
-	      ((< min (aref (ma r) pos)) ;; new interval starts inside old segment 
-	       (let ((mip (aref (mi r) pos))
-		     (map (aref (ma r) pos)))
-		 (if (< (- min mip) eps) ;; new interval starts at beginning of old segment
-		     (if (< max map) ;; is shorter than old segment
-			 (setf (aref (mi r) pos) max) ; so let it start at new end
-			 (delete-range r pos))
-		     ;; there is a gap between new and old segment
-		     (progn
-		       (setf (aref (ma r) pos) min) ;; max of old segment is beginning of new
-		       (when (< max map) ;; new segment within old one
-			 (insert r (1+ pos) max map))
-		       (incf pos)))))
-	      ((and (< pos (1- (n r) #+nil (fill-pointer (mi r)))) ;; there are more old segments on the right
-		    (< (aref (mi r) (1+ pos)) max)) ;; new interval is extending into (or over) next old segment
-	       (incf pos)))
-	    ;; iterate towards right over old segments
-	    (loop while (and (< pos (n r)) ;; the loop decreases the fill-pointer!
-			     (< (aref (mi r) pos) max))
-	       do
-		 (if (< (- (aref (ma r) pos) max) eps)
+  (with-slots (mi ma n) r
+   (declare (fixnum n))
+   (let ((eps .000001s0))
+     (cond ((< +2pif+ min) 
+	    (subtract r (- min +2pif+) (- max +2pif+)))
+	   ((< max 0s0)
+	    (subtract r (+ min +2pif+) (+ max +2pif+)))
+	   ((< min 0s0)
+	    (subtract r 0s0 max)
+	    (subtract r (+ min +2pif+) +2pif+))
+	   ((< +2pif+ max)
+	    (subtract r min +2pif+)
+	    (subtract r 0s0 (- max +2pif+)))
+	   ((= 0 n)
+	    nil)
+	   (t 
+	    (let ((pos 0))
+	      (if (< min (aref mi 0))
+		  (setf pos -1) ;; left has to go to front
+		  (let ((lo 0)
+			(mid 0)
+			(hi n))
+		    (declare (fixnum hi))
+		    ;; binary search for segment whose mi is just smaller than min
+		    (loop while (< lo (- hi 1)) do
+			 (setf mid (floor (+ lo hi) 2))
+			 (if (< (aref mi mid) min)
+			     (setf lo mid)
+			     (setf hi mid)))
+		    (setf pos lo)))
+	      (cond 
+		((= -1 pos) ;; left of all segments
+		 (setf pos 0))
+		((< min (aref ma pos)) ;; new interval starts inside old segment 
+		 (let ((mip (aref mi pos))
+		       (map (aref ma pos)))
+		   (declare (num mip map))
+		   (if (< (- min mip) eps) ;; new interval starts at beginning of old segment
+		       (if (< max map) ;; is shorter than old segment
+			   (setf (aref mi pos) max) ; so let it start at new end
+			   (delete-range r pos))
+		       ;; there is a gap between new and old segment
+		       (progn
+			 (setf (aref ma pos) min) ;; max of old segment is beginning of new
+			 (when (< max map) ;; new segment within old one
+			   (insert r (1+ pos) max map))
+			 (incf pos)))))
+		((and (< pos (1- n)) ;; there are more old segments on the right
+		      (< (aref mi (1+ pos)) max)) ;; new interval is extending into (or over) next old segment
+		 (incf pos)))
+	      ;; iterate towards right over old segments
+	      (loop while (and (< pos n) ;; the loop decreases the fill-pointer!
+			       (< (aref mi pos) max))
+		 do
+		 (if (< (- (aref ma pos) max) eps)
 		     (delete-range r pos) ;; new segment overlaps this old one
-		     (setf (aref (mi r) pos) max) ;; new segment ends within this old one
-		     ))))))
+		     (setf (aref mi pos) max) ;; new segment ends within this old one
+		     )))))))
   nil)
 
 #+nil
@@ -177,11 +184,13 @@
   (setf *candidates* (make-array 30000 :element-type 'fixnum)
 	*candidates-n* 0))
 
-(defparameter *points* (make-adjustable vec (v)))
+(defparameter *points* (make-array 100000 
+				   :element-type '(simple-array single-float 1) 
+				   :initial-element (v)))
 (defparameter *points-n* 0)
 (defparameter *grid* (make-array (list 1 1 1) :element-type 'fixnum))
 (defparameter *points-per-cell* 7)
-(declaim ((simple-array fixnum 1) *candidates)
+(declaim ((simple-array fixnum 1) *candidates*)
 	 ((simple-array vec 1) *points*)
 	 ((simple-array fixnum 3) *grid*)
 	 (fixnum *points-per-cell* *points-n* *candidates-n*))
@@ -192,6 +201,7 @@
 		(return-from pop-candidate nil)
 		(random n)))
 	 (e (aref *candidates* i)))
+    (declare ((simple-array fixnum 1) *candidates*))
     (setf (aref *candidates* i)
 	  (aref *candidates* (1- n)))
     (decf *candidates-n*)
@@ -359,8 +369,14 @@
 	 (range2 (* 4s0 4s0 radius radius))
 	 (grid-size (array-dimension *grid* 1)) 
 	 (grid-cell-size (/ 2s0 grid-size))
-	 (n (max (floor grid-size 2s0) 
-		 (ceiling (* 4s0 radius) grid-cell-size))))
+	 (distance-pixel-f (* 2 radius grid-size))
+	 (distance-pixel (ceiling distance-pixel-f)
+	   #+nil (ceiling (* 4 radius) grid-cell-size))
+	 (n (min (floor grid-size 2) 
+		 distance-pixel)))
+    (declare (fixnum n)
+	     (num distance-pixel-f)
+	     ((signed-byte 64) distance-pixel))
     (multiple-value-bind (gy gx) (get-grid-point candidate)
       (let ((xside (if (< (* .5 grid-cell-size)
 		       (- (vx candidate) (- (* gx grid-cell-size) 1)))
@@ -368,13 +384,14 @@
 	    (yside (if (< (* .5 grid-cell-size)
 			  (- (vy candidate) (- (* gy grid-cell-size) 1)))
 		       1 0)))
-	(declare (fixnum n gx gy)
+	#+nil (declare (fixnum n gx gy)
 		 (num grid-cell-size))
+	#+nil (declare (fixnum n gx grid-size))
 	(loop for j from (- n) upto n do
 	    (let ((iy (cond ((= j 0) yside)
 			    ((= j 1) 0)
 			    (t 1))))
-	      (declare (fixnum iy))
+	      #+nil (declare (fixnum iy))
 	      (loop for i from (- n) upto n do
 		   (let* ((ix (cond ((= i 0) xside)
 				    ((= i 1) 0)
@@ -386,16 +403,20 @@
 			  (dy (- (vy candidate)
 				 (* grid-cell-size (+ 0s0 gy iy j))
 				 -1s0)))
-		     (declare (fixnum ix iy i j))
+		     (declare (fixnum i j))
+		     #+nil (declare (fixnum ix iy i j))
 		     (when (< (+ (* dx dx) (* dy dy))
 			      range2)
-		       (let ((cx (floor (mod (+ gx i grid-size) grid-size)))
-			     ;; make sure the range of cx is 0 .. grid-size-1
-			     (cy (floor (mod (+ gy j grid-size) grid-size))))
+		       (let* ((ax (+ gx i grid-size))
+			      (cx (mod ax grid-size))
+			      ;; make sure the range of cx is 0 .. grid-size-1
+			      (ay (+ gy j grid-size))
+			      (cy (mod ay grid-size)))
+			 #+nil(declare ((signed-byte 64) cx))
 			 (dotimes (k *points-per-cell*)
-			   (declare ((simple-array fixnum 3) *grid*))
+			   #+nil (declare ((simple-array fixnum 3) *grid*))
 			   (let ((ind (aref *grid* cy cx k)))
-			     (declare (fixnum ind))
+			     #+nil (declare (fixnum ind))
 			     (if (= -1 ind)
 				 (return)
 				 (if (/= ind index)
@@ -408,22 +429,20 @@
 						(angle (atan (vy v) (vx v)))
 						(arg (* .25s0 (/ d radius)))
 						(theta (acos arg)))
-					   (declare ((single-float 0s0) d)
-						    ((single-float 0s0 1s0) arg)
-						    (num angle theta))
+					   (declare ((single-float 0s0 1s0) arg))
 					   (subtract r
 						     (- angle theta) 
 						     (+ angle theta)))))))))))))))))))
 
 (defgeneric make-random-angle (ranges))
 (defmethod make-random-angle ((r ranges))
-  (let ((n (n r)))
+  (with-slots (mi ma n) r
     (declare (fixnum n))
     (when (= n 0)
       (error "range is empty"))
     (let* ((i (random n))
-	   (min (aref (mi r) i))
-	   (max (aref (ma r) i)))
+	   (min (aref mi i))
+	   (max (aref ma i)))
       (declare (fixnum i)
 	       (num min max))
       (the num (+ min (random (- max min)))))))
@@ -438,7 +457,8 @@
 
 (defun generate-poisson (radius)
   (make-candidates)
-  (setf *points* (make-adjustable vec (v)))
+  (setf *points* (make-adjustable vec (v))
+	*points-n* 0)
   (make-grid radius)
   (add-point (make-random-point))
   (let ((r (make-ranges)))
@@ -449,7 +469,9 @@
 	       (pi/3 (/ +pif+ 3s0)))
 	  (reset r)
 	  (find-neighbour-ranges r index radius)
-	  (loop while (< 0 (n r))
+	  (loop while (let ((n (n r)))
+			(declare (fixnum n))
+			(< 0 n))
 	     do
 	     (let* ((angle (make-random-angle r)) 
 		    (pt (make-periphery-point
@@ -471,12 +493,24 @@
 
 #+nil
 (require :sb-sprof)
+
 #+nil
-(sb-sprof:with-profiling (:max-samples 1000
-				       :report :flat
-				       :loop nil)
-  (progn (generate-poisson .008)
-	 nil))
+(sb-sprof:unprofile-call-counts)
+#+nil
+(progn
+  (sb-sprof:profile-call-counts 'get-tiled 'random
+				'make-periphery-point
+				'array-dimensions
+				'subtract
+				'FIND-NEIGHBOUR-RANGES)
+ (sb-sprof:with-profiling (:max-samples 1000
+					:report :graph ;:flat
+					:loop nil)
+   (progn (generate-poisson .008)
+	  nil)))
+#+nil
+(progn (generate-poisson .008)
+	  nil)
 #+nil
 (defun run (&optional (radius .1s0))
   (with-open-file (s "/dev/shm/o.asy" :direction :output
