@@ -57,6 +57,8 @@ axis. Coordinates in mm."
 #+nil
 (intersect (v -1 1) (v 1) (v) (v 1))
 
+(define-condition ray-does-not-hit-principal-sphere () ())
+(define-condition ray-too-steep () ())
 
 (defun refract (start dir c n f na ri)
   (declare (vec start dir c n)
@@ -77,7 +79,7 @@ axis. Coordinates in mm."
 	 (nf2 (* nf nf))
 	 (rat (let ((rat (- nf2 rho2)))
 		(when (<= rat 0)
-		  (error 'ray-doesnt-hit-principal-sphere))
+		  (error 'ray-does-not-hit-principal-sphere))
 		rat))
 	 (s (.s (- nf (sqrt rat)) dir))
 	 (ro (.- ru s))
@@ -87,7 +89,7 @@ axis. Coordinates in mm."
       (let ((sinu-max (/ na ri)))
 	(when (<= (* sinu-max sinu-max)
 		  sinu2)
-	  (error 'angle-too-steep))
+	  (error 'ray-too-steep))
 	sinu2))
     (values 
      (the vec ro)	;; direction, not normalized, points to object
@@ -148,23 +150,24 @@ direction of excitation light)."
        (asy "draw(shift(0,0,~f)*scale3(~f)*unitcircle3);"
 	    (- rif)
 	    r)
-       (let ((nk 3)
-	     (nj 5))
-	 (dotimes (j nj)
-	  (dotimes (k nk)
-	    (let ((bfp/r (v 0 (/ j nj)))
-		  (obj (v 0 (* .1 (/ k nk)))))
-	      (multiple-value-bind (dir hit)
-		  (ray-behind-objective obj
-					bfp/r
-					(v (- rif))
-					(v 1 0 0) 
-					f na ri)
-		(let ((bfp (.s r bfp/r)))
-		  (asy "draw(~a--~a--~a);"
-		       (coord (.+ bfp
-				  (v (- (+ rif f)))))
-		       (coord hit) (coord obj))))))))
+       (let ((pd (generate-poisson .04s0)))
+	 (dotimes (j (length pd))
+	   (let ((bfp/r (aref pd j))
+		 (obj (v 0 .01 .02)))
+	     (handler-case 
+		 (multiple-value-bind (dir hit)
+		     (ray-behind-objective obj
+					   bfp/r
+					   (v (- rif))
+					   (v 1 0 0) 
+					   f na ri)
+		   (let ((bfp (.s r bfp/r)))
+		     (asy "draw(~a--~a--~a);"
+			  (coord (.+ bfp
+				     (v (- (+ rif f)))))
+			  (coord hit) (coord obj))))
+	       (ray-too-steep ())
+	       (ray-does-not-hit-principal-sphere ())))))
        (asy "clip(unitsphere);")))))
 
 (defparameter *centers* ; in mm
@@ -198,6 +201,5 @@ direction of excitation light)."
 
 #+nil
 (make-instance 'model :centers *centers*)
-;; for process take random element
-;; replace with the last one and shrink array by one
+
 
