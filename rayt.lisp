@@ -310,9 +310,9 @@ direction of excitation light)."
 
 (time
  (progn
-  (setf *pd* (generate-poisson .01s0))
+  (setf *pd* (generate-poisson .005s0))
   nil))
-
+(length *pd*)
 
 (time
  (run))
