@@ -9,77 +9,75 @@
 #+ecl (load "base")
 #.(use-package :base)
 
+(declaim (optimize (speed 3) (safety 0) (debug 0)))
+#+nil (declaim (optimize (speed 1) (safety 3) (debug 3)))
 
-(defun make-random-queue ()
-  (the (array fixnum 1)
-   (make-array 1000 :element-type 'fixnum
-	       :adjustable t
-	       :fill-pointer 0)))
-
-(defun push-random (e queue)
-  (declare (fixnum e)
-	   ((array fixnum 1) queue))
-  (vector-push-extend e queue))
-
-(defun pop-random (queue)
-  (declare ((array fixnum 1) queue))
-  (let* ((n (length queue))
-	 (i (if (= 0 n) 
-		(return-from pop-random nil)
-		(random n)))
-	 (e (aref queue i)))
-    (setf (aref queue i) (aref queue (1- n)))
-    (decf (fill-pointer queue))
-    (the fixnum e)))
-
-#+nil
-(let ((m (make-random-queue)))
-  (dotimes (i 10)
-   (push-random i m))
-  (dotimes (i 8)
-    (format t "~a~%" (pop-random m)))
-  m)
 
 (defclass ranges ()
   ((mi :accessor mi :initarg :mi
-       :type (array num 1))
+       :type (simple-array num 1))
    (ma :accessor ma :initarg :ma 
-       :type (array num 1))))
+       :type (simple-array num 1))
+   (n :accessor n :initarg :n :type fixnum :initform 0)))
 
 (defun make-ranges (&optional (min 0s0) (max +2pif+))
   (let ((mi (make-array 8 :element-type 'num ;; NOTE: this conses a bit 
 			:initial-element 0s0 
-			:fill-pointer 0
-			:adjustable t))
+			;:adjustable t
+			;:fill-pointer 0
+			))
 	(ma (make-array 8 :element-type 'num 
 			:initial-element 0s0 
-			:fill-pointer 0
-			:adjustable t)))
-    (vector-push-extend min mi)
-    (vector-push-extend max ma)
-    (make-instance 'ranges :ma ma :mi mi)))
+			;:adjustable t
+			;:fill-pointer 0
+			)))
+   #+nil (vector-push-extend min mi)
+   #+nil (vector-push-extend max ma)
+   (setf (aref mi 0) min
+	 (aref ma 0) max)
+   (make-instance 'ranges :ma ma :mi mi :n 1)))
+
+#+nil
+(make-ranges)
+
+(defgeneric reset (ranges &optional min max))
+(defmethod reset ((r ranges) &optional (min 0s0) (max +2pif+))
+  (with-slots (mi ma n) r
+    #+nil (setf (fill-pointer mi) 0
+	  (fill-pointer ma) 0)
+    (setf n 1)
+    (setf (aref mi 0) min
+	  (aref ma 0) max)
+    #+nil (vector-push-extend min mi)
+    #+nil (vector-push-extend max ma)))
+
+#+nil
+(let ((r (make-ranges)))
+  (subtract r .1 .2)
+  (subtract r .4 .5)
+  r)
 
 (defmethod print-object ((r ranges) s)
-  (format s "#<ranges ~{~{~4,2f ~}~}>" (loop for i below (length (mi r)) collect
-				(list (aref (mi r) i) (aref (ma r) i)))))
+  (format s "#<ranges ~{~{~4,2f ~}~}>"
+	  (loop for i below (n r) collect
+	       (list (aref (mi r) i) (aref (ma r) i)))))
 
 (defgeneric delete-range (ranges pos))
 (defmethod delete-range ((r ranges) pos)
   (declare (fixnum pos))
-  (let ((n (length (mi r))))
+  (with-slots (mi ma n) r
     (when (< pos (- n 1))
       (loop for i from pos below n do
-	   (setf (aref (mi r) i) (aref (mi r) (1+ i)))
-	   (setf (aref (ma r) i) (aref (ma r) (1+ i)))))
-    (vector-pop (mi r))
-    (vector-pop (ma r))
+	   (setf (aref mi i) (aref mi (1+ i)))
+	   (setf (aref ma i) (aref ma (1+ i)))))
+    (decf n)
     nil))
 #+nil
 (let ((r (make-ranges)))
   (subtract r .2 .3)
   (delete-range r 0)
-  (delete-range r 0)
-  (length (mi r)))
+ ; (delete-range r 0)
+  (subseq (mi r) 0 (n r)))
 #+NIL
 (let ((r (make-ranges)))
   (subtract r 0s0 (coerce (* 2 pi) 'num)))
@@ -88,19 +86,19 @@
 (defmethod insert ((r ranges) pos min max)
   (declare (num min max)
 	   (fixnum pos))
-  (let ((n (length (mi r))))
+  (with-slots (mi ma n) r
     (cond
       ((< pos n) ;; make space for one and move towards right
-       (vector-push-extend (aref (mi r) (1- n)) (mi r))
-       (vector-push-extend (aref (ma r) (1- n)) (ma r))
-       (loop for i from (- n 2) downto pos do
+       (loop for i from (- n 1) downto pos do
 	    (setf (aref (mi r) (1+ i)) (aref (mi r) i)
 		  (aref (ma r) (1+ i)) (aref (ma r) i)))
        (setf (aref (mi r) pos) min
-	     (aref (ma r) pos) max))
+	     (aref (ma r) pos) max)
+       (incf n))
       ((= pos n)
-       (vector-push-extend min (mi r))
-       (vector-push-extend max (ma r)))
+       (setf (aref (mi r) n) min
+	     (aref (ma r) n) max)
+       (incf n))
       (t (error "~a" (list 'trying-to-write-behind-ranges 'pos pos 'n n)))))
   pos)
 
@@ -119,7 +117,7 @@
 	 ((< +2pif+ max)
 	  (subtract r min +2pif+)
 	  (subtract r 0s0 (- max +2pif+)))
-	 ((= 0 (fill-pointer (mi r)))
+	 ((= 0 (n r) #+nil (fill-pointer (mi r)))
 	  nil)
 	 (t 
 	  (let ((pos 0))
@@ -127,7 +125,7 @@
 		(setf pos -1) ;; left has to go to front
 		(let ((lo 0)
 		      (mid 0)
-		      (hi (fill-pointer (mi r))))
+		      (hi (n r) #+nil(fill-pointer (mi r))))
 		  ;; binary search for segment whose mi is just smaller than min
 		  (loop while (< lo (- hi 1)) do
 		       (setf mid (floor (+ lo hi) 2))
@@ -151,11 +149,11 @@
 		       (when (< max map) ;; new segment within old one
 			 (insert r (1+ pos) max map))
 		       (incf pos)))))
-	      ((and (< pos (1- (fill-pointer (mi r)))) ;; there are more old segments on the right
+	      ((and (< pos (1- (n r) #+nil (fill-pointer (mi r)))) ;; there are more old segments on the right
 		    (< (aref (mi r) (1+ pos)) max)) ;; new interval is extending into (or over) next old segment
 	       (incf pos)))
 	    ;; iterate towards right over old segments
-	    (loop while (and (< pos (length (mi r))) ;; the loop decreases the fill-pointer!
+	    (loop while (and (< pos (n r)) ;; the loop decreases the fill-pointer!
 			     (< (aref (mi r) pos) max))
 	       do
 		 (if (< (- (aref (ma r) pos) max) eps)
@@ -170,21 +168,110 @@
     (subtract r 0s0 2s0)
     r)
 
+
+
+(defparameter *candidates* (make-array 30000 :element-type 'fixnum))
+(defparameter *candidates-n* 0)
+
+(defun make-candidates ()
+  (setf *candidates* (make-array 30000 :element-type 'fixnum)
+	*candidates-n* 0))
+
+(defparameter *points* (make-adjustable vec (v)))
+(defparameter *points-n* 0)
+(defparameter *grid* (make-array (list 1 1 1) :element-type 'fixnum))
+(defparameter *points-per-cell* 7)
+(declaim ((simple-array fixnum 1) *candidates)
+	 ((simple-array vec 1) *points*)
+	 ((simple-array fixnum 3) *grid*)
+	 (fixnum *points-per-cell* *points-n* *candidates-n*))
+
+(defun pop-candidate ()
+  (let* ((n *candidates-n*)
+	 (i (if (= 0 n) 
+		(return-from pop-candidate nil)
+		(random n)))
+	 (e (aref *candidates* i)))
+    (setf (aref *candidates* i)
+	  (aref *candidates* (1- n)))
+    (decf *candidates-n*)
+    #+nil (decf (fill-pointer queue))
+    (the fixnum e)))
+
+
+(defun push-point (p)
+  (declare (vec p))
+  #+nil (vector-push-extend p *points*)
+  (setf (aref *points* *points-n*) p)
+  (prog1
+      *points-n*
+    (incf *points-n*)))
+
+(defun push-candidate (i)
+  (declare (fixnum i))
+  (setf (aref *candidates* *candidates-n*) i)
+  (prog1
+      *candidates-n*
+    (incf *candidates-n*)))
+
 (defmacro make-adjustable (type init)
-  `(make-array 1000 :element-type ',type :initial-element ,init
-	       :adjustable t :fill-pointer 0))
+  `(make-array 100000 
+	       :element-type ',type 
+	       :initial-element ,init
+	       ;:adjustable t 
+	       ;:fill-pointer 0
+	       ))
 
 (defun make-random-point ()
   (v 0s0 (- (random 2s0) 1) (- (random 2s0) 1)))
 
-(defparameter *candidates* (make-random-queue))
-(defparameter *points* (make-adjustable vec (v)))
-(defparameter *grid* (make-array (list 1 1 1) :element-type 'fixnum))
-(defparameter *points-per-cell* 9)
-(declaim ((array fixnum 1) *candidates)
-	 ((array vec 1) *points*)
-	 ((simple-array fixnum 3) *grid*)
-	 (fixnum *points-per-cell*))
+
+#+nil
+(defun make-random-queue ()
+  (the (array fixnum 1)
+   (make-array 30000 :element-type 'fixnum
+	       ;:adjustable t
+	       ;:fill-pointer 0
+	       )))
+
+
+
+#+nil
+(defun push-random (e queue)
+  (declare (fixnum e)
+	   ((array fixnum 1) queue))
+  (vector-push-extend e queue))
+
+#+nil
+(defun pop-random (queue)
+  (declare ((array fixnum 1) queue))
+  (let* ((n (length queue))
+	 (i (if (= 0 n) 
+		(return-from pop-random nil)
+		(random n)))
+	 (e (aref queue i)))
+    (setf (aref queue i) (aref queue (1- n)))
+    (decf (fill-pointer queue))
+    (the fixnum e)))
+
+#+nil
+(let ((m (make-random-queue)))
+  (dotimes (i 10)
+   (push-random i m))
+  (dotimes (i 8)
+    (format t "~a~%" (pop-random m)))
+  m)
+
+#+nil
+(progn 
+  (make-candidates)
+  (dotimes (i 10)
+    (push-candidate i))
+  (dotimes (i 8)
+    (format t "~a~%" (pop-candidate)))
+  (subseq *candidates* 0 *candidates-n*))
+
+
 
 (defun print-grid (&key count)
   (destructuring-bind (h w n) (array-dimensions *grid*)
@@ -237,7 +324,7 @@
 	(setf (aref *grid* j i k) ind)
 	(return))
       (when (= k (1- *points-per-cell*))
-	(error "grid overflowed max points per cell"))))
+	(error "grid overflowed max points per cell k=~d" k))))
   t)
 
 #+nil
@@ -245,11 +332,12 @@
   (run 0.1)
   (print-grid :count t))
 
+
 (defun add-point (p)
   (declare (vec p))
-  (let ((ind (vector-push-extend p *points*)))
+  (let ((ind (push-point p)))
     (add-to-grid p ind)
-    (push-random ind *candidates*)))
+    (push-candidate ind)))
 
 (defun get-tiled (v)
   (declare (vec v))
@@ -329,7 +417,7 @@
 
 (defgeneric make-random-angle (ranges))
 (defmethod make-random-angle ((r ranges))
-  (let ((n (length (mi r))))
+  (let ((n (n r)))
     (declare (fixnum n))
     (when (= n 0)
       (error "range is empty"))
@@ -349,26 +437,37 @@
     (the vec (get-tiled (.+ v (v 0 y x))))))
 
 (defun generate-poisson (radius)
-  (setf
-   *candidates* (make-random-queue)
-   *points* (make-adjustable vec (v)))
+  (make-candidates)
+  (setf *points* (make-adjustable vec (v)))
   (make-grid radius)
   (add-point (make-random-point))
-  (loop while (< 0 (length *candidates*)) do
-       (let* ((index (pop-random *candidates*))
-	      (candidate (get-point index))
-	      (rl (make-ranges))
-	      (pi/3 (/ +pif+ 3s0)))
-	 (find-neighbour-ranges rl index radius)
-	 (loop while (< 0 (length (mi rl)))
-	    do
-	      (let* ((angle (make-random-angle rl)) 
-		     (pt (make-periphery-point
-			  candidate angle radius)))
-		(declare (num angle))
-		(add-point pt)
-		(subtract rl (- angle pi/3) (+ angle pi/3))))))
-  *points*)
+  (let ((r (make-ranges)))
+    (format t "~a~%" r)
+    (loop while (< 0 *candidates-n*) do
+	(let* ((index (pop-candidate))
+	       (candidate (get-point index))
+	       (pi/3 (/ +pif+ 3s0)))
+	  (reset r)
+	  (find-neighbour-ranges r index radius)
+	  (loop while (< 0 (n r))
+	     do
+	     (let* ((angle (make-random-angle r)) 
+		    (pt (make-periphery-point
+			 candidate angle radius)))
+	       (declare (num angle))
+	       (add-point pt)
+	       (subtract r (- angle pi/3) (+ angle pi/3)))))))
+  (subseq *points* 0 *points-n*))
+#+nil
+(progn
+  (generate-poisson .01s0)
+  (print-grid :count t)
+  nil)
+
+#+nil
+(progn
+ (time (progn (generate-poisson .008s0) nil))
+ (print-grid :count t))
 
 #+nil
 (require :sb-sprof)
@@ -376,7 +475,8 @@
 (sb-sprof:with-profiling (:max-samples 1000
 				       :report :flat
 				       :loop nil)
-  (generate-poisson .008))
+  (progn (generate-poisson .008)
+	 nil))
 #+nil
 (defun run (&optional (radius .1s0))
   (with-open-file (s "/dev/shm/o.asy" :direction :output
@@ -419,8 +519,6 @@
 	     (asy "label(\"~d\",(~f,~f),NW);"
 		  i (vx e) (vy e)))))))))
 
-#+nil
-(time (generate-poisson .008s0))
 #+nil
 (time
  (progn
