@@ -110,7 +110,8 @@
   (declare (num min max))
   (assert (<= min max))
   (with-slots (mi ma n) r
-   (declare (fixnum n))
+    (declare (fixnum n)
+	     ((simple-array num 1) mi ma))
    (let ((eps .000001s0))
      (cond ((< +2pif+ min) 
 	    (subtract r (- min +2pif+) (- max +2pif+)))
@@ -384,14 +385,10 @@
 	    (yside (if (< (* .5 grid-cell-size)
 			  (- (vy candidate) (- (* gy grid-cell-size) 1)))
 		       1 0)))
-	#+nil (declare (fixnum n gx gy)
-		 (num grid-cell-size))
-	#+nil (declare (fixnum n gx grid-size))
 	(loop for j from (- n) upto n do
 	    (let ((iy (cond ((= j 0) yside)
 			    ((= j 1) 0)
 			    (t 1))))
-	      #+nil (declare (fixnum iy))
 	      (loop for i from (- n) upto n do
 		   (let* ((ix (cond ((= i 0) xside)
 				    ((= i 1) 0)
@@ -404,7 +401,6 @@
 				 (* grid-cell-size (+ 0s0 gy iy j))
 				 -1s0)))
 		     (declare (fixnum i j))
-		     #+nil (declare (fixnum ix iy i j))
 		     (when (< (+ (* dx dx) (* dy dy))
 			      range2)
 		       (let* ((ax (+ gx i grid-size))
@@ -412,11 +408,8 @@
 			      ;; make sure the range of cx is 0 .. grid-size-1
 			      (ay (+ gy j grid-size))
 			      (cy (mod ay grid-size)))
-			 #+nil(declare ((signed-byte 64) cx))
 			 (dotimes (k *points-per-cell*)
-			   #+nil (declare ((simple-array fixnum 3) *grid*))
 			   (let ((ind (aref *grid* cy cx k)))
-			     #+nil (declare (fixnum ind))
 			     (if (= -1 ind)
 				 (return)
 				 (if (/= ind index)
@@ -462,7 +455,6 @@
   (make-grid radius)
   (add-point (make-random-point))
   (let ((r (make-ranges)))
-    (format t "~a~%" r)
     (loop while (< 0 *candidates-n*) do
 	(let* ((index (pop-candidate))
 	       (candidate (get-point index))
@@ -488,21 +480,14 @@
 
 #+nil
 (progn
- (time (progn (generate-poisson .008s0) nil))
- (print-grid :count t))
+  (time (progn (generate-poisson .008s0) nil))
+#+nil (print-grid :count t))
 
 #+nil
 (require :sb-sprof)
 
 #+nil
-(sb-sprof:unprofile-call-counts)
-#+nil
 (progn
-  (sb-sprof:profile-call-counts 'get-tiled 'random
-				'make-periphery-point
-				'array-dimensions
-				'subtract
-				'FIND-NEIGHBOUR-RANGES)
  (sb-sprof:with-profiling (:max-samples 1000
 					:report :graph ;:flat
 					:loop nil)
@@ -510,7 +495,7 @@
 	  nil)))
 #+nil
 (progn (generate-poisson .008)
-	  nil)
+       nil)
 #+nil
 (defun run (&optional (radius .1s0))
   (with-open-file (s "/dev/shm/o.asy" :direction :output
