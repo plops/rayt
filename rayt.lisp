@@ -1,3 +1,4 @@
+(declaim (optimize (speed 3) (safety 1) (debug 1)))
 (provide :rayt)
 #.(unless (find-package :rayt)
   (make-package :rayt :use '(:cl)))
@@ -13,17 +14,30 @@
 		  quadratic-root-dist))
   (defun quadratic-root-dist (a b c)
     (let ((eps (coerce 1s-7 'num))
-	  (zero (coerce 0 'num))
+	  (zero 0s0)
 	  (det2 (- (* b b) (* 4 a c))))
      (if (<= det2 zero)
        zero
-       (let* ((q (* .5 (+ b (* (signum b) (sqrt det2)))))
+       (let* ((q (* .5s0 (+ b (* (signum b) (sqrt det2)))))
 	      (aa (abs a))
 	      (aq (abs q)))
 	 (cond ((or (< aq eps) (< aa eps)) zero)
 	       (t (- (/ q a) (/ c q)))))))))
 #+nil
 (quadratic-root-dist 1s0 2s0 -3s0)
+
+(declaim (ftype (function (vec vec vec num)
+			  (values num &optional))
+		ray-sphere-intersection-length)
+	 (inline ray-sphere-intersection-length))
+(defun ray-sphere-intersection-length (start dir center radius)
+  (declare (vec start dir center)
+	   (num radius))
+ ; (check-unit-vector dir)
+  (let* ((l (.- center start))
+	 (c (- (dot l l) (* radius radius)))
+	 (b (* -2s0 (dot l dir))))
+    (the num (abs (quadratic-root-dist 1s0 b c)))))
 
 (defun find-inverse-ray-angle (height focal-length)
   "HEIGHT meridional distance of a point in sample space towards optic
@@ -60,13 +74,16 @@ axis. Coordinates in mm."
 (define-condition ray-does-not-hit-principal-sphere () ())
 (define-condition ray-too-steep () ())
 
+(declaim (ftype (function (vec vec vec vec num num num)
+			  (values vec vec &optional))
+		refract))
 (defun refract (start dir c n f na ri)
   (declare (vec start dir c n)
 	   (num f na ri))
-  (check-unit-vector dir n)
-  (check-range 1 4 ri)
-  (check-range 0 100 f)
-  (check-range 0 1.6 na)
+  ;(check-unit-vector dir n)
+  ;(check-range 1 4 ri)
+  ;(check-range 0 100 f)
+  ;(check-range 0 1.6 na)
   (let* ((i (intersect start dir c n)) ;; intersection with lens plane
  	 (rho (.- i c))
 	 (cosphi (dot n dir))
@@ -92,7 +109,7 @@ axis. Coordinates in mm."
 	  (error 'ray-too-steep))
 	sinu2))
     (values 
-     (the vec ro)	;; direction, not normalized, points to object
+     (the vec nro)	;; direction, points to object, either nro or ro
      (the vec (.+ s i)) ;; intersection of gaussian sphere and ray
      )))
 
@@ -202,4 +219,98 @@ direction of excitation light)."
 #+nil
 (make-instance 'model :centers *centers*)
 
+(declaim (ftype (function ((simple-array num 2) fixnum vec num)
+			  (values num &optional))
+		incf-vec)
+	 (inline incf-vec))
+(defun incf-vec (img n v val)
+  (declare ((simple-array num 2) img)
+	   (fixnum n) (vec v)
+	   (num val))
+  (let* ((x (vx v))
+	 (y (vy v))
+	 (i (floor (* (+ 1s0 x) n) 2))
+	 (j (floor (* (+ 1s0 y) n) 2)))
+    (declare (num x y)
+	     (fixnum i j))
+    (incf (aref img j i) val)))
 
+(defun write-pgm (filename img)
+  (declare (simple-string filename)
+	   ((array (unsigned-byte 8) 2) img))
+  (destructuring-bind (h w) (array-dimensions img)
+    (declare ((integer 0 65535) w h))
+    (with-open-file (s filename
+		       :direction :output
+		       :if-exists :supersede
+		       :if-does-not-exist :create)
+      (declare (stream s))
+      (format s "P5~%~D ~D~%255~%" w h))
+    (with-open-file (s filename 
+		       :element-type '(unsigned-byte 8)
+		       :direction :output
+		       :if-exists :append)
+      (let ((data-1d (make-array (* h w)
+		      :element-type '(unsigned-byte 8)
+		      :displaced-to img)))
+	(write-sequence data-1d s)))
+    nil))
+
+(defun linear-array (img)
+  (let ((img1 (make-array (reduce #'* (array-dimensions img))
+			  :element-type (array-element-type img)
+			  :displaced-to img)))
+    img1))
+
+(defvar *pd* nil)
+#+nil
+(time
+ (progn
+  (setf *pd* (generate-poisson .005s0))
+  nil))
+
+(defun run ()
+ (let* ((f (find-focal-length 63s0))
+	(na 1.4s0)
+	(ri 1.515s0)
+	(rif (* ri f))
+;	(r (find-bfp-radius na f))
+	(pd *pd*)
+	(n 80)
+	(img (make-array (list n n) :element-type 'num
+			 :initial-element 0s0)))
+   (dotimes (j (length pd))
+     (let ((bfp/r (aref pd j))
+	   (obj (v 0 .01 .02)))
+       (handler-case 
+	   (multiple-value-bind (dir hit)
+	       (ray-behind-objective obj bfp/r
+				     (v (- rif))
+				     (v 1 0 0) 
+				     f na ri)
+	     (loop for i from 1 below (length *centers*) do
+		  (incf-vec img n bfp/r 
+			    (ray-sphere-intersection-length 
+			     obj (normalize dir) (aref *centers* i) 8s-3))))
+	 (ray-too-steep ())
+	 (ray-does-not-hit-principal-sphere ()))))
+   (let* ((img1 (linear-array img))
+	  (ma (reduce #'max img1))
+	  (s (/ 255s0 ma))
+	  (buf (make-array (list n n) :element-type '(unsigned-byte 8)))
+	  (buf1 (linear-array buf)))
+     (dotimes (i (length buf1))
+       (setf (aref buf1 i) (floor (* s (aref img1 i)))))
+     (write-pgm "o.pgm" buf))))
+
+#+nil
+(time (dotimes (i 10) (run)))
+#+nil
+(length *pd*)
+#+nil
+(require :sb-sprof)
+#+nil
+(sb-sprof:with-profiling (:max-samples 1000
+				       :report :flat
+				       :loop nil)
+  (dotimes (i 10) (run)))

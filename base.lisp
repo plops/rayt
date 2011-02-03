@@ -26,6 +26,7 @@
 	  +pif+
 	  +2pif+))
 
+(declaim (inline v copy-vec .+ .- .* ./ dot norm normalize .s))
 
 (deftype num ()
   `single-float)
@@ -192,18 +193,26 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
 	 (* st (sin phi))
 	 (* st (cos phi))))))
 
+
 (defun check-unit-vector (&rest rest)
-  ;; turn off for faster speed
-  (dolist (e rest)
-    (unless (< (abs (- (norm e) 1)) 1s-7)
-      (error "vector isn't normalized"))))
+  (declare (ignore rest)))
 
 (defun check-range (min max &rest rest)
-#+nil  (declare (num min max))
-  (dolist (e rest)
-    (declare (num e))
-    (unless (< min e max)
-      (error "range check failed"))))
+  (declare (ignore min max rest)))
+
+
+;; (defun check-unit-vector (&rest rest)
+;;   ;; turn off for faster speed
+;;   (dolist (e rest)
+;;     (unless (< (abs (- (norm e) 1)) 1s-6)
+;;       (error "vector isn't normalized"))))
+
+;; (defun check-range (min max &rest rest)
+;; #+nil  (declare (num min max))
+;;   (dolist (e rest)
+;;     (declare (num e))
+;;     (unless (< min e max)
+;;       (error "range check failed"))))
 
 (defun req (&optional name)
   (error "Required argument ~@[~S~] missing" name))
