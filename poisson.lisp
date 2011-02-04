@@ -1,16 +1,16 @@
-(provide :poisson)
-#+ecl (make-package :poisson :use '(:cl))
-#.(unless (find-package :poisson)
-  (make-package :poisson :use '(:cl)))
-(in-package :poisson)
-(export '(generate-poisson))
-#.(unless (find-package :base)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (provide :poisson)
+  (unless (find-package :poisson)
+    (make-package :poisson :use '(:cl)))
+  (in-package :poisson)
+  (unless (find-package :base)
     (load "base.lisp"))
-#+ecl (load "base")
-#.(use-package :base)
+  (use-package :base))
 
-(declaim (optimize (speed 3) (safety 2) (debug 2)))
-#+nil (declaim (optimize (speed 1) (safety 3) (debug 3)))
+(export '(generate-poisson))
+
+#+nil (declaim (optimize (speed 3) (safety 2) (debug 2)))
+(declaim (optimize (speed 1) (safety 3) (debug 3)))
 
 
 (defclass ranges ()
@@ -111,7 +111,7 @@
   (assert (<= min max))
   (with-slots (mi ma n) r
     (declare (fixnum n)
-	     ((simple-array num 1) mi ma))
+	     (type (simple-array num 1) mi ma))
    (let ((eps .000001s0))
      (cond ((< +2pif+ min) 
 	    (subtract r (- min +2pif+) (- max +2pif+)))
@@ -191,9 +191,9 @@
 (defparameter *points-n* 0)
 (defparameter *grid* (make-array (list 1 1 1) :element-type 'fixnum))
 (defparameter *points-per-cell* 7)
-(declaim ((simple-array fixnum 1) *candidates*)
-	 ((simple-array vec 1) *points*)
-	 ((simple-array fixnum 3) *grid*)
+(declaim (type (simple-array fixnum 1) *candidates*)
+	 (type (simple-array vec 1) *points*)
+	 (type (simple-array fixnum 3) *grid*)
 	 (fixnum *points-per-cell* *points-n* *candidates-n*))
 
 (defun pop-candidate ()
@@ -202,7 +202,7 @@
 		(return-from pop-candidate nil)
 		(random n)))
 	 (e (aref *candidates* i)))
-    (declare ((simple-array fixnum 1) *candidates*))
+    (declare (type (simple-array fixnum 1) *candidates*))
     (setf (aref *candidates* i)
 	  (aref *candidates* (1- n)))
     (decf *candidates-n*)
@@ -226,7 +226,7 @@
     (incf *candidates-n*)))
 
 (defmacro make-adjustable (type init)
-  `(make-array 100000 
+  `(make-array 1000000 
 	       :element-type ',type 
 	       :initial-element ,init
 	       ;:adjustable t 
@@ -375,9 +375,8 @@
 	   #+nil (ceiling (* 4 radius) grid-cell-size))
 	 (n (min (floor grid-size 2) 
 		 distance-pixel)))
-    (declare (fixnum n)
-	     (num distance-pixel-f)
-	     ((signed-byte 64) distance-pixel))
+    (declare (fixnum n distance-pixel)
+	     (num distance-pixel-f))
     (multiple-value-bind (gy gx) (get-grid-point candidate)
       (let ((xside (if (< (* .5 grid-cell-size)
 		       (- (vx candidate) (- (* gx grid-cell-size) 1)))
@@ -386,9 +385,11 @@
 			  (- (vy candidate) (- (* gy grid-cell-size) 1)))
 		       1 0)))
 	(loop for j from (- n) upto n do
+
 	    (let ((iy (cond ((= j 0) yside)
 			    ((= j 1) 0)
 			    (t 1))))
+	      (declare (fixnum j))
 	      (loop for i from (- n) upto n do
 		   (let* ((ix (cond ((= i 0) xside)
 				    ((= i 1) 0)
@@ -400,7 +401,7 @@
 			  (dy (- (vy candidate)
 				 (* grid-cell-size (+ 0s0 gy iy j))
 				 -1s0)))
-		     (declare (fixnum i j))
+		      (declare (fixnum i))
 		     (when (< (+ (* dx dx) (* dy dy))
 			      range2)
 		       (let* ((ax (+ gx i grid-size))
@@ -416,13 +417,13 @@
 				     (let* ((pt (get-point ind))
 					    (v (get-tiled (.- pt candidate)))
 					    (dist2 (dot v v)))
-				       (declare ((single-float 0s0) dist2))
+				       (declare (type (single-float 0s0) dist2))
 				       (when (< dist2 range2)
 					 (let* ((d (sqrt dist2))
 						(angle (atan (vy v) (vx v)))
 						(arg (* .25s0 (/ d radius)))
 						(theta (acos arg)))
-					   (declare ((single-float 0s0 1s0) arg))
+					   (declare (type (single-float 0s0 1s0) arg))
 					   (subtract r
 						     (- angle theta) 
 						     (+ angle theta)))))))))))))))))))

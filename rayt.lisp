@@ -1,22 +1,18 @@
-(declaim (optimize (speed 3) (safety 1) (debug 1)))
 (provide :rayt)
-
-#+ecl (make-package :rayt :use '(:cl))
-#.(unless (find-package :rayt)
-  (make-package :rayt :use '(:cl)))
-
+(unless (find-package :rayt)
+    (make-package :rayt :use '(:cl)))
 (in-package :rayt)
-(export '(refract))
+(unless (find-package :poisson)
+    (load "poisson.lisp"))
+(unless (find-package :base)
+    (load "base.lisp"))
+(use-package :base)
+(use-package :poisson)
 
-#+ecl  (load "poisson.lisp")
-#.(unless (find-package :poisson)
-  (load "poisson.lisp"))
 
-#+ecl (use-package :base)
-#+ecl (use-package :poisson)
 
-#.(use-package :base)
-#.(use-package :poisson)
+
+(declaim (optimize (speed 1) (safety 2) (debug 2)))
 
 
 (progn
@@ -37,7 +33,7 @@
 (quadratic-root-dist 1s0 2s0 -3s0)
 
 (declaim (ftype (function (vec vec vec num)
-			  (values num &optional))
+			  #+ecl num #-ecl (values num &optional))
 		ray-sphere-intersection-length)
 	 (inline ray-sphere-intersection-length))
 (defun ray-sphere-intersection-length (start dir center radius)
@@ -56,7 +52,7 @@ axis. Coordinates in mm."
   (when (< focal-length height)
     (error 'height-smaller-than-focal-length))
   (let ((rat (/ height focal-length)))
-    #-ecl (declare ((single-float 0s0 1s0) rat))
+    (declare (type (single-float 0s0 1s0) rat))
    (the num (asin rat))))
 #+nil
 (find-inverse-ray-angle 2.2 2.61)
@@ -90,10 +86,10 @@ axis. Coordinates in mm."
 (defun refract (start dir c n f na ri)
   (declare (vec start dir c n)
 	   (num f na ri))
-  ;(check-unit-vector dir n)
-  ;(check-range 1 4 ri)
-  ;(check-range 0 100 f)
-  ;(check-range 0 1.6 na)
+  (check-unit-vector dir n)
+  (check-range 1 4 ri)
+  (check-range 0 100 f)
+  (check-range 0 1.6 na)
   (let* ((i (intersect start dir c n)) ;; intersection with lens plane
  	 (rho (.- i c))
 	 (cosphi (dot n dir))
@@ -234,7 +230,7 @@ direction of excitation light)."
 		incf-vec)
 	 (inline incf-vec))
 (defun incf-vec (img n v val)
-  #-ecl (declare ((simple-array num 2) img)
+  (declare (type (simple-array num 2) img)
 	   (fixnum n) (vec v)
 	   (num val))
   (let* ((x (vx v))
@@ -247,9 +243,9 @@ direction of excitation light)."
 
 (defun write-pgm (filename img)
   (declare (simple-string filename)
-	   #-ecl ((array (unsigned-byte 8) 2) img))
+	   (type (array (unsigned-byte 8) 2) img))
   (destructuring-bind (h w) (array-dimensions img)
-    #-ecl (declare ((integer 0 65535) w h))
+    (declare (type (integer 0 65535) w h))
     (with-open-file (s filename
 		       :direction :output
 		       :if-exists :supersede
@@ -274,57 +270,188 @@ direction of excitation light)."
 
 (defvar *pd* nil)
 
-(defun run ()
- (let* ((f (find-focal-length 63s0))
+(defun normalize-im (img)
+  (declare (type (simple-array num 2) img))
+  (destructuring-bind (h w) (array-dimensions img)
+   (let* ((img1 (linear-array img))
+	  (ma (reduce #'max img1))
+	  (s (/ 255s0 ma))
+	  (buf (make-array (list h w) 
+			   :element-type '(unsigned-byte 8)
+			   :adjustable nil))
+	  (buf1 (linear-array buf)))
+     (declare (type (simple-array (unsigned-byte 8) 2) buf)
+	      (type (array (unsigned-byte 8) 1) buf1))
+     (dotimes (i (length buf1))
+       (setf (aref buf1 i) (floor (* s (aref img1 i)))))
+     (the (simple-array (unsigned-byte 8) 2) buf))))
+
+(defun trace-from-bfp (obj &optional (n 100))
+  (declare (vec obj)
+	   (fixnum n))
+  (unless *pd*
+    (setf *pd* (generate-poisson .01s0)))
+  (let* ((f (find-focal-length 63s0))
 	(na 1.4s0)
 	(ri 1.515s0)
 	(rif (* ri f))
 ;	(r (find-bfp-radius na f))
 	(pd *pd*)
-	(n 80)
 	(img (make-array (list n n) :element-type 'num
+			 :adjustable nil
 			 :initial-element 0s0)))
+   (declare (type (simple-array vec 1) pd))
    (dotimes (j (length pd))
-     (let ((bfp/r (aref pd j))
-	   (obj (v 0 .01 .02)))
+     (let ((bfp/r (aref pd j)))
        (handler-case 
 	   (multiple-value-bind (dir hit)
 	       (ray-behind-objective obj bfp/r
 				     (v (- rif))
 				     (v 1 0 0) 
 				     f na ri)
+	     (declare (ignore hit))
 	     (loop for i from 1 below (length *centers*) do
 		  (incf-vec img n bfp/r 
 			    (ray-sphere-intersection-length 
 			     obj (normalize dir) (aref *centers* i) 8s-3))))
 	 (ray-too-steep ())
 	 (ray-does-not-hit-principal-sphere ()))))
-   (let* ((img1 (linear-array img))
-	  (ma (reduce #'max img1))
-	  (s (/ 255s0 ma))
-	  (buf (make-array (list n n) :element-type '(unsigned-byte 8)))
-	  (buf1 (linear-array buf)))
-     (dotimes (i (length buf1))
-       (setf (aref buf1 i) (floor (* s (aref img1 i)))))
-     (write-pgm "o.pgm" buf))))
+   (the (simple-array num 2) img)))
 
+
+(defmacro tmp (str &rest rest)
+  `(concatenate 'string "/home/martin/tmp/t0203/"
+		(format nil ,str ,@rest)))
+
+
+(defun ..+ (dst src)
+  (let ((a1 (linear-array dst))
+	(b1 (linear-array src)))
+   (dotimes (i (length a1))
+     (incf (aref a1 i) (aref b1 i))))
+  dst)
+
+#+nil
+(progn
+  (setf *pd* (generate-poisson .003s0))
+  (length *pd*))
+
+#+nil
 (time
- (progn
-  (setf *pd* (generate-poisson .005s0))
-  nil))
-(length *pd*)
+ (let* ((n 8)
+	(field .1s0)			; diameter
+	(s (/ field n))
+	(w 200)
+	(sum (make-array (list w w) :element-type 'num
+			 :initial-element 0s0)))
+   (dotimes (j n)
+     (dotimes (i n)
+       
+       
+       (let ((bfp (trace-from-bfp 
+		   (.- (.s s (v 0 j i))
+		       (.s (* .5s0 field) (v 0 1 1)))
+		   w)))
+	 (..+ sum bfp)
+	 (write-pgm (tmp "bfp~2,'0d-~2,'0d.pgm" j i)
+		    (normalize-im
+		     bfp)))))
+   (write-pgm (tmp "sum.pgm")
+	      (normalize-im sum))))
 
-(time
- (run))
+(defun raster-line (img y x y1 x1 &optional (val 255))
+  ;; wikipedia Bresenham's_line_algorithm
+  (declare (type fixnum y x y1 x1)
+	   (type (simple-array (unsigned-byte 8) 2) img)
+	   (type (unsigned-byte 8) val))
+  (let* ((dx (abs (- x1 x)))
+	 (dy (abs (- y1 y)))
+	 (sx (if (< x x1) 1 -1))
+	 (sy (if (< y y1) 1 -1))
+	 (e (- dx dy)))
+    (loop
+	 (setf (aref img y x) val)
+       (when (and (= x x1)
+		  (= y y1))
+	 (return-from raster-line
+	   (the (simple-array (unsigned-byte 8) 2) img)))
+       (let ((e2 (* 2 e)))
+	 (when (< (- dy) e2)
+	   (decf e dy)
+	   (incf x sx))
+	 (when (< e2 dx)
+	   (incf e dx)
+	   (incf y sy))))))
+
+
+(defun raster-circle (img y0 x0 r &optional (val 255))
+  ;; wikipedia Midpoint_circle_algorithm
+  (declare (type (simple-array (unsigned-byte 8) 2) img) 
+	   (type fixnum x0 y0 r)
+	   (type (unsigned-byte 8) val))
+  (let ((f (- 1 r))
+	(dx 1)
+	(dy (* -2 r))
+	(x 0)
+	(y r))
+    (declare (type fixnum f dx dy x y))
+    (macrolet ((q (j i)
+		 `(setf (aref img (+ y0 ,j) (+ x0 ,i)) val
+			(aref img (+ y0 ,i) (+ x0 ,j)) val)))
+      (q r 0)
+      (q (- r) 0)
+      (loop while (< x y) do
+	   ;; dx = 2x+1
+	   ;; dy = -2y
+	   ;; f=x^2+y^2-r^2+2x-y+1
+	   (when (<= 0 f)
+	     (decf y)
+	     (incf dy 2)
+	     (incf f dy))
+	   (incf x)
+	   (incf dx 2)
+	   (incf f dx)
+	   (q y x)
+	   (q y (- x))
+	   (q (- y) x)
+	   (q (- y) (- x)))))
+  (the (simple-array (unsigned-byte 8) 2) img))
+
+(defun raster-disk (img y0 x0 r &optional (val 255))
+  (declare (type (simple-array (unsigned-byte 8) 2) img) 
+	   (type fixnum x0 y0 r)
+	   (type (unsigned-byte 8) val))
+  (let ((f (- 1 r))
+	(dx 1)
+	(dy (* -2 r))
+	(x 0)
+	(y r))
+    (declare (type fixnum f dx dy x y))
+    (macrolet ((q (y i i1)
+		 `(raster-line img (+ y0 ,y) (+ x0 ,i1) (+ y0 ,y) (+ x0 ,i) val)))
+      (q 0 r (- r))
+      (loop while (< x y) do
+	   ;; dx = 2x+1
+	   ;; dy = -2y
+	   ;; f=x^2+y^2-r^2+2x-y+1
+	   (when (<= 0 f)
+	     (decf y)
+	     (incf dy 2)
+	     (incf f dy))
+	   (incf x)
+	   (incf dx 2)
+	   (incf f dx)
+	   (q y (- x) x)
+	   (q (- y) (- x) x)
+	   (q x y (- y))
+	   (q (- x) y (- y)))))
+  (the (simple-array (unsigned-byte 8) 2) img))
 
 #+nil
-(time (dotimes (i 10) (run)))
-#+nil
-(length *pd*)
-#+nil
-(require :sb-sprof)
-#+nil
-(sb-sprof:with-profiling (:max-samples 1000
-				       :report :flat
-				       :loop nil)
-  (dotimes (i 10) (run)))
+(let ((m (make-array (list 300 300)
+		     :element-type '(unsigned-byte 8))))
+  (dotimes (i 30)
+   (raster-circle m 150 150 (* 3 i)))
+  (raster-line m 12 13 150 190)
+  (raster-disk m 200 200 40)
+  (write-pgm "/dev/shm/o.pgm" m))

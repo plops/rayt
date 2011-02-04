@@ -1,32 +1,14 @@
 (provide :base)
-#+ecl
-(make-package :base :use '(:cl))
-#.(unless (find-package :base)
-  (make-package :base :use '(:cl)))
+(unless (find-package :base)
+    (make-package :base :use '(:cl))) 
+
 (in-package :base)
-(export '(num
-	  vec
-	  with-arrays
-	  v
-	  copy-vec
-	  .+
-	  .-
-	  .*
-	  ./
-	  dot
-	  norm
-	  normalize
-	  cross
-	  .s
-	  vx
-	  vy
-	  vz
-	  v-spherical
-	  check-unit-vector
-	  check-range
-	  req
-	  +pif+
-	  +2pif+))
+(export 
+ '(num vec with-arrays v copy-vec
+   .+ .- .* ./ dot norm normalize
+   cross .s vx vy vz v-spherical
+   check-unit-vector check-range
+   req +pif+ +2pif+))
 
 (declaim (inline v copy-vec .+ .- .* ./ dot norm normalize .s))
 
@@ -57,7 +39,7 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
    `(let ((,a (make-array ,(list-length rest)
 			 :element-type 'num)))
       ,@(let ((i 0))
-	     (declare ((integer 0 #.(1- (expt 2 16))) i))
+	     (declare (type (integer 0 #.(1- (expt 2 16))) i))
 	     (loop for e in rest collect
 		  (prog1
 		       `(setf (aref ,a ,i)
@@ -67,7 +49,8 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
 					(t `(* 1s0 ,e))))
 		     (incf i))))
       ,a)))
-#+nil
+
+#+nil 
 (vec 2 2 1)
 #+nil
 (vec .2 .3 1)
@@ -136,7 +119,7 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
 (defun norm (v)
   (declare (vec v))
   (let ((l2 (dot v v)))
-    (declare ((single-float 0s0) l2)) ;; FIXME: write num here
+    (declare (type (single-float 0s0) l2)) ;; FIXME: write num here
     (the num (sqrt l2))))
 #+nil
 (norm (v 1 1 0))
@@ -187,8 +170,8 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
 
 (defun v-spherical (theta phi)
   "Convert spherical coordinates into cartesian."
-  (declare ((single-float 0s0 #.(/ (coerce pi 'num) 4)) theta)
-	   ((single-float 0s0 #.(* 2 (coerce pi 'num))) phi))
+  (declare (type (single-float 0s0 #.(/ (coerce pi 'num) 4)) theta)
+	   (type (single-float #.(coerce (- pi) 'num) #.(coerce pi 'num)) phi))
   (let* ((st (sin theta)))
     (the vec
       (v (cos theta)
