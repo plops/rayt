@@ -553,9 +553,9 @@ spheres is defined by RADIUS-BFP-MM."
     (write-pgm (tmp "sumffp~3,'0d.pgm" nucleus) ffp)
     (write-pgm (tmp "sumbfp~3,'0d.pgm" nucleus) (normalize-im bfp))))
 
-#+nil
+
 (dotimes (k (length *centers*))
-  (sum-bfp k 
-	   :radius-ffp-mm 2.4s-3
-	  :radius-bfp-mm 10s-3
-	  :w-bfp 300))
+  (time (sum-bfp k 
+	    :radius-ffp-mm 2.4s-3
+	    :radius-bfp-mm 10s-3
+	    :w-bfp 300)))
