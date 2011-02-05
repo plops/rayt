@@ -1,16 +1,4 @@
-(provide :rayt)
-(unless (find-package :rayt)
-    (make-package :rayt :use '(:cl)))
 (in-package :rayt)
-(unless (find-package :poisson)
-    (load "poisson.lisp"))
-(unless (find-package :base)
-    (load "base.lisp"))
-(use-package :base)
-(use-package :poisson)
-
-
-
 
 (declaim (optimize (speed 1) (safety 2) (debug 2)))
 

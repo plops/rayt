@@ -1,13 +1,4 @@
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (provide :poisson)
-  (unless (find-package :poisson)
-    (make-package :poisson :use '(:cl)))
-  (in-package :poisson)
-  (unless (find-package :base)
-    (load "base.lisp"))
-  (use-package :base))
-
-(export '(generate-poisson))
+(in-package :poisson)
 
 #+nil (declaim (optimize (speed 3) (safety 2) (debug 2)))
 (declaim (optimize (speed 1) (safety 3) (debug 3)))

@@ -1,14 +1,4 @@
-(provide :base)
-(unless (find-package :base)
-    (make-package :base :use '(:cl))) 
-
 (in-package :base)
-(export 
- '(num vec with-arrays v copy-vec
-   .+ .- .* ./ dot norm normalize
-   cross .s vx vy vz v-spherical
-   check-unit-vector check-range
-   req +pif+ +2pif+))
 
 (declaim (inline v copy-vec .+ .- .* ./ dot norm normalize .s))
 
