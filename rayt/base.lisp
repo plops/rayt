@@ -21,7 +21,7 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
 
 (eval-when (:compile-toplevel)
  (defun num (x)
-   (declare (number x))
+   (declare (type number x))
    (coerce x 'single-float)))
 
 (defmacro vec (&rest rest)
@@ -68,28 +68,28 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
   (defun .+ (a &rest rest)
     (let ((r (copy-vec a)))
       (dolist (e rest)
-	(declare (vec e))
+	(declare (type vec e))
 	(dotimes (i (length r))
 	  (incf (aref r i) (aref e i))))
       r))
   (defun .- (a &rest rest)
     (let ((r (copy-vec a)))
       (dolist (e rest)
-	(declare (vec e))
+	(declare (type vec e))
 	(dotimes (i (length r))
 	  (decf (aref r i) (aref e i))))
      r))
   (defun .* (a &rest rest)
     (let ((r (copy-vec a)))
       (dolist (e rest)
-	(declare (vec e))
+	(declare (type vec e))
 	(dotimes (i (length r))
 	 (setf (aref r i) (* (aref r i) (aref e i)))))
      r))
   (defun ./ (a &rest rest)
     (let ((r (copy-vec a)))
       (dolist (e rest)
-	(declare (vec e))
+	(declare (type vec e))
 	(dotimes (i (length r))
 	  (setf (aref r i) (/ (aref r i) (aref e i)))))
       r)))
@@ -97,9 +97,9 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
 (./ (vec 1 2 3) (vec 3 32 2) (vec 32 4 2))
 
 (defun dot (a b)
-  (declare (vec a b))
+  (declare (type vec a b))
   (let ((r 0s0))
-    (declare (num r))
+    (declare (type num r))
     (dotimes (i (length a))
       (incf r (* (aref a i) (aref b i))))
     (the num r)))
@@ -107,7 +107,7 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
 (dot (v 1 3 0) (v 3))
 
 (defun norm (v)
-  (declare (vec v))
+  (declare (type vec v))
   (let ((l2 (dot v v)))
     (declare (type (single-float 0s0) l2)) ;; FIXME: write num here
     (the num (sqrt l2))))
@@ -126,7 +126,7 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
 
 
 (defun normalize (v)
-  (declare (vec v))
+  (declare (type vec v))
   (let ((b (copy-vec v)))
     (the vec (.s (/ (norm v)) b))))
 
@@ -147,15 +147,15 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
 
 (declaim (inline vx vy vz))
 (defun vx (v)
-  (declare (vec v))
+  (declare (type vec v))
   (the num (aref v 2)))
 
 (defun vy (v)
-  (declare (vec v))
+  (declare (type vec v))
   (the num (aref v 1)))
 
 (defun vz (v)
-  (declare (vec v))
+  (declare (type vec v))
   (the num (aref v 0)))
 
 (defun v-spherical (theta phi)
@@ -183,9 +183,9 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
 ;;       (error "vector isn't normalized"))))
 
 ;; (defun check-range (min max &rest rest)
-;; #+nil  (declare (num min max))
+;; #+nil  (declare (type num min max))
 ;;   (dolist (e rest)
-;;     (declare (num e))
+;;     (declare (type num e))
 ;;     (unless (< min e max)
 ;;       (error "range check failed"))))
 

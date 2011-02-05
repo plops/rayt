@@ -25,8 +25,8 @@
 		ray-sphere-intersection-length)
 	 (inline ray-sphere-intersection-length))
 (defun ray-sphere-intersection-length (start dir center radius)
-  (declare (vec start dir center)
-	   (num radius))
+  (declare (type vec start dir center)
+	   (type num radius))
  ; (check-unit-vector dir)
   (let* ((l (.- center start))
 	 (c (- (dot l l) (* radius radius)))
@@ -36,7 +36,7 @@
 (defun find-inverse-ray-angle (height focal-length)
   "HEIGHT meridional distance of a point in sample space towards optic
 axis. Coordinates in mm."
-  (declare (num height focal-length))
+  (declare (type num height focal-length))
   (when (< focal-length height)
     (error 'height-smaller-than-focal-length))
   (let ((rat (/ height focal-length)))
@@ -46,15 +46,15 @@ axis. Coordinates in mm."
 (find-inverse-ray-angle 2.2 2.61)
 
 (defun find-bfp-radius (na f)
-  (declare (num na f)) (the num (* f na)))
+  (declare (type num na f)) (the num (* f na)))
 
 (defun find-focal-length (mag)
-  (declare (num mag))  (the num (/ 164.5 mag)))
+  (declare (type num mag))  (the num (/ 164.5 mag)))
 
 
 (defun intersect (start dir c n)
   "intersection of ray and plane"
-  (declare (vec start dir c n))
+  (declare (type vec start dir c n))
   (let* ((hess-dist (dot c n))
 	 (div (dot n dir)))
     (when (< (abs div) 1d-12)
@@ -72,8 +72,8 @@ axis. Coordinates in mm."
 			  (values vec vec &optional))
 		refract))
 (defun refract (start dir c n f na ri)
-  (declare (vec start dir c n)
-	   (num f na ri))
+  (declare (type vec start dir c n)
+	   (type num f na ri))
   (check-unit-vector dir n)
   (check-range 1 4 ri)
   (check-range 0 100 f)
@@ -113,8 +113,8 @@ the border of the BFP (values z y x, z is ignored).  Focal length F,
 numerical aperture NA and center of objective C (position where
 Gaussian sphere cuts optic axis). Normal N of objective (points in
 direction of excitation light)."
-  (declare (vec obj bfp/r c n)
-	   (num f na ri))
+  (declare (type vec obj bfp/r c n)
+	   (type num f na ri))
   (let* ((theta (find-inverse-ray-angle (norm obj) f))
 	 (phi (atan (vy obj) (vx obj)))
 	 (dir (v-spherical theta phi))
@@ -201,7 +201,7 @@ direction of excitation light)."
 	   :initial-contents
 	   (mapcar #'(lambda (q) 
 		       (destructuring-bind (z y x) q
-			 (declare (fixnum z y x))
+			 (declare (type fixnum z y x))
 			 (v (* .01 (+ z offset))
 			    (* .001 (- y 150))
 			    (* .001 (- x 150)))))
@@ -211,7 +211,7 @@ direction of excitation light)."
 			 :initial-contents
 			 (mapcar #'(lambda (q) 
 				     (destructuring-bind (z y x) q
-				       (declare (fixnum z y x))
+				       (declare (type fixnum z y x))
 				       (v z y x)))
 				 l))))
   (setf *centers* a
@@ -245,7 +245,7 @@ direction of excitation light)."
     (incf (aref img j i) val)))
 
 (defun write-pgm (filename img)
-  (declare (simple-string filename)
+  (declare (type simple-string filename)
 	   (type (array (unsigned-byte 8) 2) img))
   (destructuring-bind (h w) (array-dimensions img)
     (declare (type (integer 0 65535) w h))
@@ -253,7 +253,7 @@ direction of excitation light)."
 		       :direction :output
 		       :if-exists :supersede
 		       :if-does-not-exist :create)
-      (declare (stream s))
+      (declare (type stream s))
       (format s "P5~%~D ~D~%255~%" w h))
     (with-open-file (s filename 
 		       :element-type '(unsigned-byte 8)
@@ -295,7 +295,7 @@ direction of excitation light)."
 (defun trace-from-bfp (obj nucleus &key (radius 2s-3) (w 100))
   (declare (type vec obj)
 	   (type fixnum w)
-	   (num radius))
+	   (type num radius))
   (unless *pd*
     (setf *pd* (generate-poisson .01s0)))
   (let* ((f (find-focal-length 63s0))

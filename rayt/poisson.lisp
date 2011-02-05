@@ -34,7 +34,7 @@
 (defgeneric reset (ranges &optional min max))
 (defmethod reset ((r ranges) &optional (min 0s0) (max +2pif+))
   (with-slots (mi ma n) r
-    (declare (fixnum n))
+    (declare (type fixnum n))
     #+nil (setf (fill-pointer mi) 0
 	  (fill-pointer ma) 0)
     (setf n 1)
@@ -56,9 +56,9 @@
 
 (defgeneric delete-range (ranges pos))
 (defmethod delete-range ((r ranges) pos)
-  (declare (fixnum pos))
+  (declare (type fixnum pos))
   (with-slots (mi ma n) r
-    (declare (fixnum n))
+    (declare (type fixnum n))
     (when (< pos (- n 1))
       (loop for i from pos below n do
 	   (setf (aref mi i) (aref mi (1+ i)))
@@ -77,10 +77,10 @@
 
 (defgeneric insert (ranges pos min max))
 (defmethod insert ((r ranges) pos min max)
-  (declare (num min max)
-	   (fixnum pos))
+  (declare (type num min max)
+	   (type fixnum pos))
   (with-slots (mi ma n) r
-    (declare (fixnum n))
+    (declare (type fixnum n))
     (cond
       ((< pos n) ;; make space for one and move towards right
        (loop for i from (- n 1) downto pos do
@@ -98,10 +98,10 @@
 
 (defgeneric subtract (ranges min max))
 (defmethod subtract ((r ranges) min max)
-  (declare (num min max))
+  (declare (type num min max))
   (assert (<= min max))
   (with-slots (mi ma n) r
-    (declare (fixnum n)
+    (declare (type fixnum n)
 	     (type (simple-array num 1) mi ma))
    (let ((eps .000001s0))
      (cond ((< +2pif+ min) 
@@ -123,7 +123,7 @@
 		  (let ((lo 0)
 			(mid 0)
 			(hi n))
-		    (declare (fixnum hi))
+		    (declare (type fixnum hi))
 		    ;; binary search for segment whose mi is just smaller than min
 		    (loop while (< lo (- hi 1)) do
 			 (setf mid (floor (+ lo hi) 2))
@@ -137,7 +137,7 @@
 		((< min (aref ma pos)) ;; new interval starts inside old segment 
 		 (let ((mip (aref mi pos))
 		       (map (aref ma pos)))
-		   (declare (num mip map))
+		   (declare (type num mip map))
 		   (if (< (- min mip) eps) ;; new interval starts at beginning of old segment
 		       (if (< max map) ;; is shorter than old segment
 			   (setf (aref mi pos) max) ; so let it start at new end
@@ -202,7 +202,7 @@
 
 
 (defun push-point (p)
-  (declare (vec p))
+  (declare (type vec p))
   #+nil (vector-push-extend p *points*)
   (setf (aref *points* *points-n*) p)
   (prog1
@@ -210,7 +210,7 @@
     (incf *points-n*)))
 
 (defun push-candidate (i)
-  (declare (fixnum i))
+  (declare (type fixnum i))
   (setf (aref *candidates* *candidates-n*) i)
   (prog1
       *candidates-n*
@@ -240,13 +240,13 @@
 
 #+nil
 (defun push-random (e queue)
-  (declare (fixnum e)
-	   ((array fixnum 1) queue))
+  (declare (type fixnum e)
+	   (type (array fixnum 1) queue))
   (vector-push-extend e queue))
 
 #+nil
 (defun pop-random (queue)
-  (declare ((array fixnum 1) queue))
+  (declare (type (array fixnum 1) queue))
   (let* ((n (length queue))
 	 (i (if (= 0 n) 
 		(return-from pop-random nil)
@@ -290,7 +290,7 @@
 (print-grid :count t)
 
 (defun get-grid-size (radius)
-  (declare (num radius))
+  (declare (type num radius))
   (the fixnum
     (max 2 (ceiling (/ 2s0 (* 4s0 radius))))))
 
@@ -305,13 +305,13 @@
 (declaim (ftype (function (vec) (values fixnum fixnum &optional))
 		get-grid-point))
 (defun get-grid-point (v)
-  (declare (vec v))
+  (declare (type vec v))
   (destructuring-bind (h w n) (array-dimensions *grid*)
     (declare (ignore n)
-	     (fixnum h w))
+	     (type fixnum h w))
     (let* ((x (vx v))
 	   (y (vy v)))
-      (declare (num x y))
+      (declare (type num x y))
       (values (floor (* (+ 1s0 y) h) 2)
 	      (floor (* (+ 1s0 x) w) 2)))))
 
@@ -319,7 +319,7 @@
   (aref *points* index))
 
 (defun add-to-grid (v ind)
-  (declare (vec v))
+  (declare (type vec v))
   (multiple-value-bind (j i) (get-grid-point v)
     (dotimes (k *points-per-cell*)
       (when (= -1 (aref *grid* j i k))
@@ -336,13 +336,13 @@
 
 
 (defun add-point (p)
-  (declare (vec p))
+  (declare (type vec p))
   (let ((ind (push-point p)))
     (add-to-grid p ind)
     (push-candidate ind)))
 
 (defun get-tiled (v)
-  (declare (vec v))
+  (declare (type vec v))
   (let* ((x (vx v))
 	 (y (vy v))
 	 (xx (cond ((< x -1s0) (+ 2s0 x))
@@ -355,8 +355,8 @@
 
 (defgeneric find-neighbour-ranges (ranges index radius))
 (defmethod find-neighbour-ranges ((r ranges) index radius)
-  (declare (fixnum index)
-	   (num radius))
+  (declare (type fixnum index)
+	   (type num radius))
   (let* ((candidate (get-point index))
 	 (range2 (* 4s0 4s0 radius radius))
 	 (grid-size (array-dimension *grid* 1)) 
@@ -366,8 +366,8 @@
 	   #+nil (ceiling (* 4 radius) grid-cell-size))
 	 (n (min (floor grid-size 2) 
 		 distance-pixel)))
-    (declare (fixnum n distance-pixel)
-	     (num distance-pixel-f))
+    (declare (type fixnum n distance-pixel)
+	     (type num distance-pixel-f))
     (multiple-value-bind (gy gx) (get-grid-point candidate)
       (let ((xside (if (< (* .5 grid-cell-size)
 		       (- (vx candidate) (- (* gx grid-cell-size) 1)))
@@ -380,7 +380,7 @@
 	    (let ((iy (cond ((= j 0) yside)
 			    ((= j 1) 0)
 			    (t 1))))
-	      (declare (fixnum j))
+	      (declare (type fixnum j))
 	      (loop for i from (- n) upto n do
 		   (let* ((ix (cond ((= i 0) xside)
 				    ((= i 1) 0)
@@ -392,7 +392,7 @@
 			  (dy (- (vy candidate)
 				 (* grid-cell-size (+ 0s0 gy iy j))
 				 -1s0)))
-		      (declare (fixnum i))
+		      (declare (type fixnum i))
 		     (when (< (+ (* dx dx) (* dy dy))
 			      range2)
 		       (let* ((ax (+ gx i grid-size))
@@ -422,20 +422,20 @@
 (defgeneric make-random-angle (ranges))
 (defmethod make-random-angle ((r ranges))
   (with-slots (mi ma n) r
-    (declare (fixnum n))
+    (declare (type fixnum n))
     (when (= n 0)
       (error "range is empty"))
     (let* ((i (random n))
 	   (min (aref mi i))
 	   (max (aref ma i)))
-      (declare (fixnum i)
+      (declare (type fixnum i)
 	       (num min max))
       (the num (+ min (random (- max min)))))))
 
 
 (defun make-periphery-point (v angle radius)
-  (declare (vec v)
-	   (num angle radius))
+  (declare (type vec v)
+	   (type num angle radius))
   (let* ((x (* 2 radius (cos angle)))
 	 (y (* 2 radius (sin angle))))
     (the vec (get-tiled (.+ v (v 0 y x))))))
@@ -454,13 +454,13 @@
 	  (reset r)
 	  (find-neighbour-ranges r index radius)
 	  (loop while (let ((n (n r)))
-			(declare (fixnum n))
+			(declare (type fixnum n))
 			(< 0 n))
 	     do
 	     (let* ((angle (make-random-angle r)) 
 		    (pt (make-periphery-point
 			 candidate angle radius)))
-	       (declare (num angle))
+	       (declare (type num angle))
 	       (add-point pt)
 	       (subtract r (- angle pi/3) (+ angle pi/3)))))))
   (subseq *points* 0 *points-n*))
