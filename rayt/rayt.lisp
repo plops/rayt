@@ -468,6 +468,19 @@ direction of excitation light)."
 	   (q (- x) y (- y)))))
   (the (simple-array (unsigned-byte 8) 2) img))
 
+(defun sorted-triangle (y0 x0 y1 x1 y2 x2)
+  (let* ((handedness (- (* (- y1 y0)
+			   (- x2 x0))
+			(* (- x1 x0)
+			   (- y2 y0))))
+	 (left (if (< handedness 0)
+		   (edge-setup y0 x0 y2 x2)
+		   (edge-setup y0 x0 y1 x1)))
+	 (right (if (< handedness 0)
+		    (edge-setup y0 x0 y1 x1)
+		    (edge-setup y0 x0 y2 x2))))
+    ))
+
 #+nil
 (let ((m (make-array (list 300 300)
 		     :element-type '(unsigned-byte 8))))
@@ -553,7 +566,7 @@ spheres is defined by RADIUS-BFP-MM."
     (write-pgm (tmp "sumffp~3,'0d.pgm" nucleus) ffp)
     (write-pgm (tmp "sumbfp~3,'0d.pgm" nucleus) (normalize-im bfp))))
 
-
+#+nil
 (dotimes (k (length *centers*))
   (time (sum-bfp k 
 	    :radius-ffp-mm 2.4s-3

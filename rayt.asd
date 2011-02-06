@@ -1,8 +1,8 @@
 (asdf:defsystem rayt
   :components ((:module "rayt"
-                        :serial t
                         :components
-                        ((:file "package")
-                         (:file "base")
-                         (:file "poisson")
-                         (:file "rayt")))))
+                        ((:file "packages")
+                         (:file "base" :depends-on ("packages"))
+                         (:file "raster" :depends-on ("packages" "base"))
+			 (:file "poisson" :depends-on ("packages" "base"))
+                         (:file "rayt" :depends-on ("packages" "base" "poisson"))))))

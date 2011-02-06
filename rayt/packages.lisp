@@ -11,6 +11,10 @@
   (:use :cl :base)
   (:export #:generate-poisson))
 
+(defpackage :raster
+  (:use :cl :base)
+  (:export ))
+
 (defpackage :rayt
   (:use :cl :base :poisson)
   (:export
