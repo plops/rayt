@@ -5,7 +5,11 @@
    #:.+ #:.- #:.* #:./ #:dot #:norm #:normalize
    #:cross #:.s #:vx #:vy #:vz #:v-spherical
    #:check-unit-vector #:check-range
-   #:req #:+pi+ #:+2*pi+ #:+pi/2+))
+   #:req #:+pi+ #:+2*pi+ #:+pi/2+
+   #:mat
+   #:m
+   #:rotation-matrix
+   #:m*))
 
 (defpackage :poisson
   (:use :cl :base)
@@ -20,7 +24,7 @@
    #:raster-triangle))
 
 (defpackage :rayt
-  (:use :cl :base :poisson)
+  (:use :cl :base :poisson :raster)
   (:export
    #:*centers-fix*
    #:*centers*

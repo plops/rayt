@@ -8,7 +8,7 @@
     (declare (type fixnum w h))
     (when (and (<= 0 i (1- w))
 	       (<= 0 j (1- h)))
-      (setf (aref img j i) val))))
+      (incf (aref img j i) val))))
 
 (defun raster-line (img y x y1 x1 &optional (val 255))
   ;; wikipedia Bresenham's_line_algorithm

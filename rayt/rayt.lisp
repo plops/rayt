@@ -193,7 +193,7 @@ direction of excitation light)."
 	    (13 101 135)
 	    (13 155 89)
 	    (11 219 120)))
-       (central 0)
+      ; (central 0)
        (offset 0 #+nil (- (first (elt l central))))
        (a (make-array 
 	   (length l)
@@ -458,22 +458,60 @@ spheres is defined by RADIUS-BFP-MM."
 ;; direct (and therefore faster) projection of the sphere through
 ;; objective onto bfp
 
-(defun project-nucleus-into-bfp (bfp nucleus ffp-pos phi &key (ri 1.515) (radius-mm 1.5s-3))
-  (declare (type fixnum nucleus)
+(defun project-nucleus-into-bfp (bfp nucleus ffp-pos 
+				 &key (mag 63s0) (f (find-focal-length mag))
+				 (ri 1.515s0) (radius-mm 1.5s-3) (triangles 13) (na 1.45))
+  (declare (type fixnum nucleus triangles)
 	   (type (simple-array (unsigned-byte 8) 2) bfp)
 	   (type vec ffp-pos)
-	   (type num radius-mm ri))
-  (let ((nuc-center (.s ri (.- (aref *centers* nucleus) ffp-pos)))
-	(dist (norm nuc-center))
-	;; the billboard bounded by the tangents from ffp-pos to
-	;; nucleus.  2D construction of diameter: find difference
-	;; between the two intersections of a circle with radius
-	;; DIST=R and the nucleus' circle RADIUS-MM=r: (\vec x-(R
-	;; 0)^T)^2=R^2 and (\vec x)^2 = r^2, \vec x=(x,y)^T,
-	;; x..distance from nucleus center to bill-board. y..radius of
-	;; billboard
-	(bb-x (/ (* radius-mm radius-mm)
-		 (* 2 dist)))
-	(bb-y (* radius-mm (sqrt (- 1s0 (/ (* 2s0 dist))))))
-	#+nil (cc ())))
-  )
+	   (type num radius-mm ri mag f))
+  (let* ((radius (* radius-mm ri))
+	 (nuc-center (.s ri (.- (aref *centers* nucleus) ffp-pos)))
+	 (dist (norm nuc-center))
+	 (c0 (.s (/ dist) nuc-center))
+	 ;; the billboard bounded by the tangents from ffp-pos to
+	 ;; nucleus.  2D construction of diameter: find difference
+	 ;; between the two intersections of a circle with radius
+	 ;; DIST=R and the nucleus' circle RADIUS-MM=r: (\vec x-(R
+	 ;; 0)^T)^2=R^2 and (\vec x)^2 = r^2, \vec x=(x,y)^T,
+	 ;; x..distance from nucleus center to bill-board. y..radius of
+	 ;; billboard
+	 (bb-x (/ (* radius radius)
+		  (* 2 dist)))
+	 (bb-y (* radius
+		  (let ((arg (- 1s0 (/ (* 2s0 dist)))))
+		    (if (<= 0 arg)
+			(sqrt arg)
+			(error "distance from nucleus center to billboard is negative~% ~a" 
+			       (list 'dist dist 'arg arg 'bb-x bb-x))))))
+	 (meridian (.s bb-y (cross c0 (v 0 0 1)))) ;; prependicular to ray
+	 (rif (* ri f))
+	 (bfp-rad (find-bfp-radius na f))
+	 (s (/ (array-dimension bfp 0) bfp-rad))
+	 (vertices (loop for i below triangles collect
+			(let* ((m (rotation-matrix 
+				   (* i (/ +2*pi+ triangles)) c0))
+			       (cc (.+ (.s (- 1 (/ bb-x dist)) nuc-center) 
+				       (m* m meridian)))
+			       (gauss-hit (.s (* s rif) (normalize cc))))
+			  gauss-hit))))
+    (dotimes (i triangles)
+      (let ((e (elt vertices i))
+	    (f (elt vertices (if (< i (1- triangles))
+				 (1+ i)
+				 0))))
+	(macrolet ((tri (a b c)
+		     `(raster-triangle bfp ,@(let ((r ()))
+						  (dolist (e (list a b c))
+						       (push `(vy ,e) r)
+						       (push `(vx ,e) r))
+						  (reverse r)) 1)))
+	  (tri c0 e f))))))
+
+
+(defun run ()
+ (let ((bfp (make-array (list 200 200) :element-type '(unsigned-byte 8))))
+   (project-nucleus-into-bfp bfp 0 (v))))
+
+#+nil
+(run)

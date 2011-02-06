@@ -204,7 +204,7 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
   (let ((m (make-array '(3 3)
 		       :element-type 'num)))
     (macrolet ((o (j i)
-		 `(aref m ,(- 2 j) ,i))) ;; note: rows are reversed
+		 `(aref m ,j ,i))) ;; note: rows are reversed
       (setf (o 0 0) a
 	    (o 0 1) b
 	    (o 0 2) c
@@ -237,12 +237,12 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
 	 (- (* 1-c u w) sv)
 	 
 	 (- (* 1-c u v) sw)
-	(+ c (* 1-c v v))
-	(+ (* 1-c v w) su)
-
-	(+ (* 1-c u w) sv)
-	(- (* 1-c v w) su)
-	(+ c (* 1-c w w))))))
+	 (+ c (* 1-c v v))
+	 (+ (* 1-c v w) su)
+	 
+	 (+ (* 1-c u w) sv)
+	 (- (* 1-c v w) su)
+	 (+ c (* 1-c w w))))))
 #+nil
 (rotation-matrix (/ +pi+ 2) (v 0 0 1))
 
@@ -256,8 +256,8 @@ result."
     (dotimes (i 3)
       (dotimes (j 3)
         (incf (aref res i)
-              (* (aref matrix i j) (aref vect j)))))
+              (* (aref matrix j i) (aref vect j)))))
     res))
 #+nil
-(m* (rotation-matrix (/ +pi+) (v 0 0 1)) (v 1))
+(m* (rotation-matrix +pi/2+ (v 1 0 0)) (v 0 0 1))
 
