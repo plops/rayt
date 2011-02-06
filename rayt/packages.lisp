@@ -13,7 +13,11 @@
 
 (defpackage :raster
   (:use :cl :base)
-  (:export ))
+  (:export
+   #:raster-line
+   #:raster-circle
+   #:raster-disk
+   #:raster-triangle))
 
 (defpackage :rayt
   (:use :cl :base :poisson)
