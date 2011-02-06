@@ -5,6 +5,7 @@
   (declare (type (simple-array (unsigned-byte 8) 2) img)
 	   (type fixnum j i))
   (destructuring-bind (h w) (array-dimensions img)
+    (declare (type fixnum w h))
     (when (and (<= 0 i (1- w))
 	       (<= 0 j (1- h)))
       (setf (aref img j i) val))))
@@ -97,7 +98,67 @@
 	   (q (- x) y (- y)))))
   (the (simple-array (unsigned-byte 8) 2) img))
 
+(declaim (optimize (speed 3) (safety 0) (debug 1)))
+
+;; graphics gems III pp. 599
+(deftype fixcoord ()
+  `(integer -10000 10000))
+(defstruct edge
+  (ymin 0 :type fixcoord)
+  (ymax 0 :type fixcoord)
+  (xi 0 :type fixcoord)
+  (si 0 :type fixcoord)
+  (r 0 :type fixcoord)
+  (inc 0 :type fixcoord)
+  (dec 0 :type fixcoord))
+
+(defun edge-setup (y0 x0 y1 x1)
+  (declare (type fixcoord y0 x0 y1 x1))
+  (the edge
+   (let ((dx (- x1 x0))
+	 (dy (- y1 y0)))
+     (declare (type fixcoord dx dy))
+     (if (= 0 dy)
+	 (make-edge :ymin y0 :ymax y1)
+	 (let* ((si (floor dx dy))
+		(sf (- dx (* si dy))))
+	   (declare (type fixcoord si) 
+		    (type fixcoord sf))
+	   (make-edge :ymin y0 :ymax y1
+		      :si si :xi (+ x0 si)
+		      :r (- (* 2 sf) dy)
+		      :inc sf
+		      :dec (- sf dy)))))))
+
+(defun edge-scan (edge)
+  (declare (type edge edge))
+  (the fixcoord 
+    (with-slots (xi r si dec inc) edge
+      (let ((x xi))
+	(if (<= 0 r)
+	    (progn (incf xi (1+ si))
+		   (incf r dec))
+	    (progn (incf xi si)
+		   (incf r inc)))
+	x))))
+
+(defvar *draw-target* nil)
+(defvar *pen-value* (the (unsigned-byte 8) 255))
+(declaim (type (unsigned-byte 8) *pen-value*))
+
+(declaim (inline draw-point))
+(defun draw-point (y x)
+  (set-aref *draw-target* y x *pen-value*))
+
+(declaim (inline draw-span))
+(defun draw-span (y x1 x2)
+  (declare (type fixcoord y x1 x2))
+  (loop for x from (1+ x1) upto x2 do 
+       (draw-point y x)))
+
+;; triangles must be sorted y0 <= y1 <= y2
 (defun sorted-triangle (y0 x0 y1 x1 y2 x2)
+  (declare (type fixcoord y0 x0 y1 x1 y2 x2))
   (let* ((handedness (- (* (- y1 y0)
 			   (- x2 x0))
 			(* (- x1 x0)
@@ -108,7 +169,31 @@
 	 (right (if (< handedness 0)
 		    (edge-setup y0 x0 y1 x1)
 		    (edge-setup y0 x0 y2 x2))))
-    ))
+    (declare (type fixcoord handedness))
+    (loop for y from (1+ (edge-ymin left)) upto (min (edge-ymax left)
+						     (edge-ymax right)) do
+	 (draw-span y (edge-scan left) (edge-scan right)))
+    (if (<= 0 handedness)
+	(setf left (edge-setup y1 x1 y2 x2))
+	(setf right (edge-setup y1 x1 y2 x2)))
+    (loop for y from (1+ (max (edge-ymin left)
+			      (edge-ymin right)))
+	 upto (edge-ymax left) do
+	 (draw-span y (edge-scan left) (edge-scan right)))))
+
+(defun raster-triangle (y0 x0 y1 x1 y2 x2)
+  (declare (type fixcoord y0 x0 y1 x1 y2 x2))
+  (when (< y1 y0)
+    (rotatef y0 y1)
+    (rotatef x0 x1))
+  (when (< y2 y0)
+    (rotatef y0 y2)
+    (rotatef x0 x2))
+  (when (< y2 y1)
+    (rotatef y1 y2)
+    (rotatef x1 x2))
+  (sorted-triangle y0 x0 y1 x1 y2 x2))
+
 
 #+nil
 (let ((m (make-array (list 300 300)
@@ -117,5 +202,8 @@
    (raster-circle m 150 150 (* 3 i)))
   (raster-line m 12 13 150 190)
   (raster-disk m 200 200 40)
-  (write-pgm "/dev/shm/o.pgm" m))
+  (setf *draw-target* m)
+  (raster-triangle 10 10 30 30 300 400)
+  (raster-triangle 12 20 30 40 60 12)
+  (rayt::write-pgm "/dev/shm/o.pgm" m))
 
