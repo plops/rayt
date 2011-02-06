@@ -5,11 +5,17 @@
 (deftype num ()
   `single-float)
 
-(defconstant +pif+ #.(coerce pi 'num))
-(defconstant +2pif+ #.(coerce (* 2 pi) 'num))
+(defconstant +pi+ #.(coerce pi 'num))
+(defconstant +2*pi+ #.(coerce (* 2 pi) 'num))
+
+(defconstant +pi/2+ #.(coerce (* .5 pi) 'num))
+
 
 (deftype vec ()
   `(simple-array num 1))
+
+(deftype mat ()
+  `(simple-array num 2))
 
 (defmacro with-arrays (arrays &body body)
   "Provides a corresponding accessor for each array as a local macro,
@@ -191,3 +197,67 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
 
 (defun req (&optional name)
   (error "Required argument ~@[~S~] missing" name))
+
+
+(defun m (a b c d e f g h i)
+  (declare (type num a b c d e f g h i))
+  (let ((m (make-array '(3 3)
+		       :element-type 'num)))
+    (macrolet ((o (j i)
+		 `(aref m ,(- 2 j) ,i))) ;; note: rows are reversed
+      (setf (o 0 0) a
+	    (o 0 1) b
+	    (o 0 2) c
+	    (o 1 0) d
+	    (o 1 1) e
+	    (o 1 2) f
+	    (o 2 0) g
+	    (o 2 1) h
+	    (o 2 2) i))
+    (the mat m)))
+
+(defun rotation-matrix (angle vect)
+  "Create matrix that rotates by ANGLE radians around the direction
+ VECT. VECT must be normalized."
+  (declare ((single-float 0s0 #.+2*pi+) angle)
+           (vec vect))
+  (check-unit-vector vect)
+  (let* ((u (aref vect 0))
+         (v (aref vect 1))
+         (w (aref vect 2))
+         (c (cos angle))
+         (s (sin angle))
+         (1-c (- 1 c))
+         (su (* s u))
+         (sv (* s v))
+         (sw (* s w)))
+    (the mat
+      (m (+ c (* 1-c u u))
+	 (+ (* 1-c u v) sw)
+	 (- (* 1-c u w) sv)
+	 
+	 (- (* 1-c u v) sw)
+	(+ c (* 1-c v v))
+	(+ (* 1-c v w) su)
+
+	(+ (* 1-c u w) sv)
+	(- (* 1-c v w) su)
+	(+ c (* 1-c w w))))))
+#+nil
+(rotation-matrix (/ +pi+ 2) (v 0 0 1))
+
+(defun m* (matrix vect)
+  "Multiply MATRIX with VECT. Copies 4th component w from VECT into
+result."
+  (declare (mat matrix)
+           (vec vect)
+           (values vec &optional))
+  (let ((res (v)))
+    (dotimes (i 3)
+      (dotimes (j 3)
+        (incf (aref res i)
+              (* (aref matrix i j) (aref vect j)))))
+    res))
+#+nil
+(m* (rotation-matrix (/ +pi+) (v 0 0 1)) (v 1))
+

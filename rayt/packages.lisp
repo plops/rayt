@@ -5,7 +5,7 @@
    #:.+ #:.- #:.* #:./ #:dot #:norm #:normalize
    #:cross #:.s #:vx #:vy #:vz #:v-spherical
    #:check-unit-vector #:check-range
-   #:req #:+pif+ #:+2pif+))
+   #:req #:+pi+ #:+2*pi+ #:+pi/2+))
 
 (defpackage :poisson
   (:use :cl :base)

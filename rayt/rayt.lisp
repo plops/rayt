@@ -371,126 +371,6 @@ direction of excitation light)."
    (write-pgm (tmp "sum.pgm")
 	      (normalize-im sum))))
 
-(declaim (inline set-aref))
-(defun set-aref (img j i val)
-  (declare (type (simple-array (unsigned-byte 8) 2) img)
-	   (type fixnum j i))
-  (destructuring-bind (h w) (array-dimensions img)
-    (when (and (<= 0 i (1- w))
-	       (<= 0 j (1- h)))
-      (setf (aref img j i) val))))
-
-(defun raster-line (img y x y1 x1 &optional (val 255))
-  ;; wikipedia Bresenham's_line_algorithm
-  (declare (type fixnum y x y1 x1)
-	   (type (simple-array (unsigned-byte 8) 2) img)
-	   (type (unsigned-byte 8) val))
-  (let* ((dx (abs (- x1 x)))
-	 (dy (abs (- y1 y)))
-	 (sx (if (< x x1) 1 -1))
-	 (sy (if (< y y1) 1 -1))
-	 (e (- dx dy)))
-    (loop
-       (set-aref img y x val) 
-       (when (and (= x x1)
-		  (= y y1))
-	 (return-from raster-line
-	   (the (simple-array (unsigned-byte 8) 2) img)))
-       (let ((e2 (* 2 e)))
-	 (when (< (- dy) e2)
-	   (decf e dy)
-	   (incf x sx))
-	 (when (< e2 dx)
-	   (incf e dx)
-	   (incf y sy))))))
-
-
-(defun raster-circle (img y0 x0 r &optional (val 255))
-  ;; wikipedia Midpoint_circle_algorithm
-  (declare (type (simple-array (unsigned-byte 8) 2) img) 
-	   (type fixnum x0 y0 r)
-	   (type (unsigned-byte 8) val))
-  (let ((f (- 1 r))
-	(dx 1)
-	(dy (* -2 r))
-	(x 0)
-	(y r))
-    (declare (type fixnum f dx dy x y))
-    (macrolet ((q (j i)
-		 `(progn (set-aref img (+ y0 ,j) (+ x0 ,i) val)
-			 (set-aref img (+ y0 ,i) (+ x0 ,j) val))))
-      (q r 0)
-      (q (- r) 0)
-      (loop while (< x y) do
-	   ;; dx = 2x+1
-	   ;; dy = -2y
-	   ;; f=x^2+y^2-r^2+2x-y+1
-	   (when (<= 0 f)
-	     (decf y)
-	     (incf dy 2)
-	     (incf f dy))
-	   (incf x)
-	   (incf dx 2)
-	   (incf f dx)
-	   (q y x)
-	   (q y (- x))
-	   (q (- y) x)
-	   (q (- y) (- x)))))
-  (the (simple-array (unsigned-byte 8) 2) img))
-
-(defun raster-disk (img y0 x0 r &optional (val 255))
-  (declare (type (simple-array (unsigned-byte 8) 2) img) 
-	   (type fixnum x0 y0 r)
-	   (type (unsigned-byte 8) val))
-  (let ((f (- 1 r))
-	(dx 1)
-	(dy (* -2 r))
-	(x 0)
-	(y r))
-    (declare (type fixnum f dx dy x y))
-    (macrolet ((q (y i i1)
-		 `(raster-line img (+ y0 ,y) (+ x0 ,i1) (+ y0 ,y) (+ x0 ,i) val)))
-      (q 0 r (- r))
-      (loop while (< x y) do
-	   ;; dx = 2x+1
-	   ;; dy = -2y
-	   ;; f=x^2+y^2-r^2+2x-y+1
-	   (when (<= 0 f)
-	     (decf y)
-	     (incf dy 2)
-	     (incf f dy))
-	   (incf x)
-	   (incf dx 2)
-	   (incf f dx)
-	   (q y (- x) x)
-	   (q (- y) (- x) x)
-	   (q x y (- y))
-	   (q (- x) y (- y)))))
-  (the (simple-array (unsigned-byte 8) 2) img))
-
-(defun sorted-triangle (y0 x0 y1 x1 y2 x2)
-  (let* ((handedness (- (* (- y1 y0)
-			   (- x2 x0))
-			(* (- x1 x0)
-			   (- y2 y0))))
-	 (left (if (< handedness 0)
-		   (edge-setup y0 x0 y2 x2)
-		   (edge-setup y0 x0 y1 x1)))
-	 (right (if (< handedness 0)
-		    (edge-setup y0 x0 y1 x1)
-		    (edge-setup y0 x0 y2 x2))))
-    ))
-
-#+nil
-(let ((m (make-array (list 300 300)
-		     :element-type '(unsigned-byte 8))))
-  (dotimes (i 30)
-   (raster-circle m 150 150 (* 3 i)))
-  (raster-line m 12 13 150 190)
-  (raster-disk m 200 200 40)
-  (write-pgm "/dev/shm/o.pgm" m))
-
-
 (defun get-nuclei-in-slice (slice-px r-px)
   "Return a list of nuclei that should be visible in the given slice."
   (declare (type fixnum slice-px r-px))
@@ -572,3 +452,28 @@ spheres is defined by RADIUS-BFP-MM."
 	    :radius-ffp-mm 2.4s-3
 	    :radius-bfp-mm 10s-3
 	    :w-bfp 300)))
+
+
+
+;; direct (and therefore faster) projection of the sphere through
+;; objective onto bfp
+
+(defun project-nucleus-into-bfp (bfp nucleus ffp-pos phi &key (ri 1.515) (radius-mm 1.5s-3))
+  (declare (type fixnum nucleus)
+	   (type (simple-array (unsigned-byte 8) 2) bfp)
+	   (type vec ffp-pos)
+	   (type num radius-mm ri))
+  (let ((nuc-center (.s ri (.- (aref *centers* nucleus) ffp-pos)))
+	(dist (norm nuc-center))
+	;; the billboard bounded by the tangents from ffp-pos to
+	;; nucleus.  2D construction of diameter: find difference
+	;; between the two intersections of a circle with radius
+	;; DIST=R and the nucleus' circle RADIUS-MM=r: (\vec x-(R
+	;; 0)^T)^2=R^2 and (\vec x)^2 = r^2, \vec x=(x,y)^T,
+	;; x..distance from nucleus center to bill-board. y..radius of
+	;; billboard
+	(bb-x (/ (* radius-mm radius-mm)
+		 (* 2 dist)))
+	(bb-y (* radius-mm (sqrt (- 1s0 (/ (* 2s0 dist))))))
+	#+nil (cc ())))
+  )

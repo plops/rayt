@@ -11,7 +11,7 @@
        :type (simple-array num 1))
    (n :accessor n :initarg :n :type fixnum :initform 0)))
 
-(defun make-ranges (&optional (min 0s0) (max +2pif+))
+(defun make-ranges (&optional (min 0s0) (max +2*pi+))
   (let ((mi (make-array 8 :element-type 'num ;; NOTE: this conses a bit 
 			:initial-element 0s0 
 			;:adjustable t
@@ -32,7 +32,7 @@
 (make-ranges)
 
 (defgeneric reset (ranges &optional min max))
-(defmethod reset ((r ranges) &optional (min 0s0) (max +2pif+))
+(defmethod reset ((r ranges) &optional (min 0s0) (max +2*pi+))
   (with-slots (mi ma n) r
     (declare (type fixnum n))
     #+nil (setf (fill-pointer mi) 0
@@ -104,16 +104,16 @@
     (declare (type fixnum n)
 	     (type (simple-array num 1) mi ma))
    (let ((eps .000001s0))
-     (cond ((< +2pif+ min) 
-	    (subtract r (- min +2pif+) (- max +2pif+)))
+     (cond ((< +2*pi+ min) 
+	    (subtract r (- min +2*pi+) (- max +2*pi+)))
 	   ((< max 0s0)
-	    (subtract r (+ min +2pif+) (+ max +2pif+)))
+	    (subtract r (+ min +2*pi+) (+ max +2*pi+)))
 	   ((< min 0s0)
 	    (subtract r 0s0 max)
-	    (subtract r (+ min +2pif+) +2pif+))
-	   ((< +2pif+ max)
-	    (subtract r min +2pif+)
-	    (subtract r 0s0 (- max +2pif+)))
+	    (subtract r (+ min +2*pi+) +2*pi+))
+	   ((< +2*pi+ max)
+	    (subtract r min +2*pi+)
+	    (subtract r 0s0 (- max +2*pi+)))
 	   ((= 0 n)
 	    nil)
 	   (t 
@@ -450,7 +450,7 @@
     (loop while (< 0 *candidates-n*) do
 	(let* ((index (pop-candidate))
 	       (candidate (get-point index))
-	       (pi/3 (/ +pif+ 3s0)))
+	       (pi/3 (/ +pi+ 3s0)))
 	  (reset r)
 	  (find-neighbour-ranges r index radius)
 	  (loop while (let ((n (n r)))
