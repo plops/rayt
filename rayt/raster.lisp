@@ -1,9 +1,9 @@
 (in-package :raster)
 
-(declaim (inline set-aref))
-(defun set-aref (img j i val)
+(declaim (inline draw-point))
+(defun draw-point (img j i val)
   (declare (type (simple-array (unsigned-byte 8) 2) img)
-	   (type fixnum j i))
+	   (type fixcoord j i))
   (destructuring-bind (h w) (array-dimensions img)
     (declare (type fixnum w h))
     (when (and (<= 0 i (1- w))
@@ -21,7 +21,7 @@
 	 (sy (if (< y y1) 1 -1))
 	 (e (- dx dy)))
     (loop
-       (set-aref img y x val) 
+       (draw-point img y x val) 
        (when (and (= x x1)
 		  (= y y1))
 	 (return-from raster-line
@@ -47,8 +47,8 @@
 	(y r))
     (declare (type fixnum f dx dy x y))
     (macrolet ((q (j i)
-		 `(progn (set-aref img (+ y0 ,j) (+ x0 ,i) val)
-			 (set-aref img (+ y0 ,i) (+ x0 ,j) val))))
+		 `(progn (draw-point img (+ y0 ,j) (+ x0 ,i) val)
+			 (draw-point img (+ y0 ,i) (+ x0 ,j) val))))
       (q r 0)
       (q (- r) 0)
       (loop while (< x y) do
@@ -69,9 +69,8 @@
   (the (simple-array (unsigned-byte 8) 2) img))
 
 (defun raster-disk (img y0 x0 r &optional (val 255))
-  (declare (type (simple-array (unsigned-byte 8) 2) img) 
-	   (type fixnum x0 y0 r)
-	   (type (unsigned-byte 8) val))
+  (declare (type (simple-array (unsigned-byte 8) 2) img) (type (unsigned-byte 8) val) 
+	   (type fixnum x0 y0 r))
   (let ((f (- 1 r))
 	(dx 1)
 	(dy (* -2 r))
@@ -142,23 +141,18 @@
 		   (incf r inc)))
 	x))))
 
-(defvar *draw-target* nil)
-(defvar *pen-value* (the (unsigned-byte 8) 255))
-(declaim (type (unsigned-byte 8) *pen-value*))
-
-(declaim (inline draw-point))
-(defun draw-point (y x)
-  (set-aref *draw-target* y x *pen-value*))
 
 (declaim (inline draw-span))
-(defun draw-span (y x1 x2)
-  (declare (type fixcoord y x1 x2))
+(defun draw-span (img y x1 x2 val)
+  (declare (type fixcoord y x1 x2)
+	   (type (simple-array (unsigned-byte 8) 2) img) (type (unsigned-byte 8) val) )
   (loop for x from (1+ x1) upto x2 do 
-       (draw-point y x)))
+       (draw-point img y x val)))
 
 ;; triangles must be sorted y0 <= y1 <= y2
-(defun sorted-triangle (y0 x0 y1 x1 y2 x2)
-  (declare (type fixcoord y0 x0 y1 x1 y2 x2))
+(defun sorted-triangle (img y0 x0 y1 x1 y2 x2 val)
+  (declare (type fixcoord y0 x0 y1 x1 y2 x2)
+	   (type (simple-array (unsigned-byte 8) 2) img) (type (unsigned-byte 8) val) )
   (let* ((handedness (- (* (- y1 y0)
 			   (- x2 x0))
 			(* (- x1 x0)
@@ -172,17 +166,19 @@
     (declare (type fixcoord handedness))
     (loop for y from (1+ (edge-ymin left)) upto (min (edge-ymax left)
 						     (edge-ymax right)) do
-	 (draw-span y (edge-scan left) (edge-scan right)))
+	 (draw-span img y (edge-scan left) (edge-scan right) val))
     (if (<= 0 handedness)
 	(setf left (edge-setup y1 x1 y2 x2))
 	(setf right (edge-setup y1 x1 y2 x2)))
     (loop for y from (1+ (max (edge-ymin left)
 			      (edge-ymin right)))
 	 upto (edge-ymax left) do
-	 (draw-span y (edge-scan left) (edge-scan right)))))
+	 (draw-span img y (edge-scan left) (edge-scan right) val))
+    img))
 
-(defun raster-triangle (y0 x0 y1 x1 y2 x2)
-  (declare (type fixcoord y0 x0 y1 x1 y2 x2))
+(defun raster-triangle (img y0 x0 y1 x1 y2 x2 &optional (val 255))
+  (declare (type fixcoord y0 x0 y1 x1 y2 x2)
+	   (type (simple-array (unsigned-byte 8) 2) img) (type (unsigned-byte 8) val))
   (when (< y1 y0)
     (rotatef y0 y1)
     (rotatef x0 x1))
@@ -192,7 +188,7 @@
   (when (< y2 y1)
     (rotatef y1 y2)
     (rotatef x1 x2))
-  (sorted-triangle y0 x0 y1 x1 y2 x2))
+  (sorted-triangle img y0 x0 y1 x1 y2 x2 val))
 
 
 #+nil
@@ -202,8 +198,7 @@
    (raster-circle m 150 150 (* 3 i)))
   (raster-line m 12 13 150 190)
   (raster-disk m 200 200 40)
-  (setf *draw-target* m)
-  (raster-triangle 10 10 30 30 300 400)
-  (raster-triangle 12 20 30 40 60 12)
+  (raster-triangle m 10 10 30 30 300 400)
+  (raster-triangle m 12 20 30 40 60 12)
   (rayt::write-pgm "/dev/shm/o.pgm" m))
 
