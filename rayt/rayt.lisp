@@ -1,6 +1,6 @@
 (in-package :rayt)
 
-(declaim (optimize (speed 1) (safety 2) (debug 2)))
+(declaim (optimize (speed 1) (safety 3) (debug 3)))
 
 
 (progn
@@ -454,6 +454,42 @@ spheres is defined by RADIUS-BFP-MM."
 	    :w-bfp 300)))
 
 
+(defun project-ray-into-bfp (dir ri f)
+  "Given a direction in sample space, return the point where ray will
+  intersect the BFP."
+  (declare (type vec dir)
+	   (num ri f))
+  (check-unit-vector dir)
+  (let* ((x (vx dir))
+	 (y (vy dir))
+	 (z (vz dir))
+	 ;(q (/ y x))
+	 (atanq (atan y x))
+	 (cosatanq (cos atanq) #+nil (/ (sqrt (+ 1s0 (* q q)))))
+	 (sinatanq (sin atanq) #+nil (* x cosatanq))
+	 (sinacosz (sin (acos z)) #+nil (sqrt (- 1s0 (* z z))))
+	 (nf (* ri f))
+	 (rho (* nf sinacosz)))
+    (format t "project into bfp ~%~a~%" (list 
+					    'cosatanq cosatanq
+					    'sinatanq sinatanq
+					    'sinacosz sinacosz
+					    'nf nf
+					    'rho rho
+					    'y (* rho sinatanq)
+					    'x (* rho cosatanq)
+					    ))
+    (the vec
+     (v (- (+ nf f))
+	(* rho sinatanq)
+	(* rho cosatanq)))))
+
+#+nil
+(* 1.515 (find-focal-length 63s0)
+   (sin (atan 1 1)))
+
+#+nil
+(project-ray-into-bfp (normalize (v 1 1 0)) 1.515 (find-focal-length 63s0))
 
 ;; direct (and therefore faster) projection of the sphere through
 ;; objective onto bfp
@@ -465,8 +501,26 @@ spheres is defined by RADIUS-BFP-MM."
 	   (type (simple-array (unsigned-byte 8) 2) bfp)
 	   (type vec ffp-pos)
 	   (type num radius-mm ri mag f))
-  (let* ((radius (* radius-mm ri))
-	 (nuc-center (.s ri (.- (aref *centers* nucleus) ffp-pos)))
+  (with-open-file (stream "/dev/shm/obj.asy" :direction :output
+		   :if-exists :supersede
+		   :if-does-not-exist :create)
+  (macrolet ((asy (str &rest rest)
+	       `(progn
+		  (format stream ,str ,@rest)
+		  (terpri stream))))
+    (flet ((coord (v)
+	     (format nil "(~f,~f,~f)"
+		     (vx v) (vy v) (vz v))))
+      (let* ((f (find-focal-length 63s0))
+	    (na 1.4s0)
+	    (ri 1.515s0)
+	    (rif (* ri f))
+	    (r (find-bfp-radius na f)))
+       (asy "import three;")
+       (asy "size(1000,1000);")
+       (let* ((radius (* radius-mm ri))
+	      (nuc-center (let ((c (.- (aref *centers* nucleus) ffp-pos)))
+			    (.s (* (signum (- (vz c))) ri) c)))
 	 (dist (norm nuc-center))
 	 (c0 (.s (/ dist) nuc-center))
 	 ;; the billboard bounded by the tangents from ffp-pos to
@@ -476,42 +530,95 @@ spheres is defined by RADIUS-BFP-MM."
 	 ;; 0)^T)^2=R^2 and (\vec x)^2 = r^2, \vec x=(x,y)^T,
 	 ;; x..distance from nucleus center to bill-board. y..radius of
 	 ;; billboard
-	 (bb-x (/ (* radius radius)
-		  (* 2 dist)))
-	 (bb-y (* radius
-		  (let ((arg (- 1s0 (/ (* 2s0 dist)))))
-		    (if (<= 0 arg)
-			(sqrt arg)
-			(error "distance from nucleus center to billboard is negative~% ~a" 
-			       (list 'dist dist 'arg arg 'bb-x bb-x))))))
-	 (meridian (.s bb-y (cross c0 (v 0 0 1)))) ;; prependicular to ray
-	 (rif (* ri f))
-	 (bfp-rad (find-bfp-radius na f))
-	 (s (/ (array-dimension bfp 0) bfp-rad))
-	 (vertices (loop for i below triangles collect
-			(let* ((m (rotation-matrix 
-				   (* i (/ +2*pi+ triangles)) c0))
-			       (cc (.+ (.s (- 1 (/ bb-x dist)) nuc-center) 
-				       (m* m meridian)))
-			       (gauss-hit (.s (* s rif) (normalize cc))))
-			  gauss-hit))))
-    (dotimes (i triangles)
-      (let ((e (elt vertices i))
-	    (f (elt vertices (if (< i (1- triangles))
-				 (1+ i)
-				 0))))
-	(macrolet ((tri (a b c)
-		     `(raster-triangle bfp ,@(let ((r ()))
-						  (dolist (e (list a b c))
-						       (push `(vy ,e) r)
-						       (push `(vx ,e) r))
-						  (reverse r)) 1)))
-	  (tri c0 e f))))))
+	 ;; solve([(x-R)^2+y^2=R^2,x^2+y^2=r^2],[x,y]);
+	      (bb-x (/ (* radius radius)
+		       (* 2 dist)))
+	      (bb-y (let ((y2 (- (* radius radius) (* bb-x bb-x)))) 
+		      (if (<= 0 y2) (sqrt y2)
+			  (error "arg neg ~a" (list 'bb-x bb-x)))))
+	      (meridian (.s bb-y (cross c0 (v 0 0 1)))) ;; prependicular to ray
+	      (rif (* ri f))
+	      (bfp-rad (find-bfp-radius na f))
+	      (s (/ (array-dimension bfp 0) (* 2 bfp-rad))))
+	 (flet ((scale (q)
+		  (.s s (.+ q (v 0 bfp-rad bfp-rad)))))
+	   (let* ((ccs ())
+		  (vc0 (scale (project-ray-into-bfp c0 ri f)))
+		 (vertices (loop for i below triangles collect
+				(let* ((m (rotation-matrix 
+					   (* i (/ +2*pi+ triangles)) c0))
+				       (cc (.+ (.s (- 1 (/ bb-x dist)) nuc-center) 
+					       (m* m meridian)))
+				       (b (project-ray-into-bfp (normalize cc) ri f)))
+				  (push cc ccs) 
+				  (scale b)))))
+	    (progn	 (asy "draw((0,0,0)..(0,0,.1));")
+			 (asy "draw((0,0,0)..(0,.1,0));")
+			 (asy "draw((0,0,0)..(.1,0,0));")
+			 (asy "draw(shift(~a)*scale3(~f)*unitsphere);"
+			      (coord nuc-center)
+			      (* .8 radius))
+			 (asy "draw((0,0,0)..~a);" (coord nuc-center))
+			 (asy "draw((0,0,0)..~a);" (coord meridian))
+			 (asy "draw((0,0,0)..~a);" (coord (.+ (.s (- 1 (/ bb-x dist))
+								  nuc-center) 
+							      meridian)))
+			 (asy "draw(~a" (coord (v)))
+			 (dolist (e ccs)
+			   (asy "--~a" (coord e)))
+			 (asy ");")
+			 
+			 (asy "draw(~a" (coord vc0))
+			 (dolist (e vertices)
+			   (asy "--~a" (coord (v 0 (vy e) (vx e)))))
+			 (asy ");")
+			 
+			 (format t "~a~%" (list ccs (map-into vertices 
+						     #'(lambda (v) (v (floor (vz v))
+								 (floor (vy v)) 
+								 (floor (vx v)))) vertices))))
+	    (dotimes (i triangles)
+	      (let ((e (elt vertices i))
+		    (f (elt vertices (if (< i (1- triangles))
+					 (1+ i)
+					 0))))
+		(macrolet ((tri (a b c)
+			     `(raster-triangle bfp ,@(let ((r ()))
+							  (dolist (e (list a b c))
+							    (push `(floor (vy ,e)) r)
+							    (push `(floor (vx ,e)) r))
+							  (reverse r)) 250)))
+		  (tri vc0 e f))))
+	    vc0))))))))
+
+
+#+nil
+(format t "~a~%"
+ (run))
 
 
 (defun run ()
- (let ((bfp (make-array (list 200 200) :element-type '(unsigned-byte 8))))
-   (project-nucleus-into-bfp bfp 0 (v))))
+ (let ((bfp (make-array (list 200 200) :element-type '(unsigned-byte 8)))
+       (res ()))
+   (dotimes (i (length *centers*))
+     (push (project-nucleus-into-bfp bfp i (v) :radius-mm 16s-3)
+	   res))
+   (write-pgm "/dev/shm/bfp.pgm" bfp)
+   (write-pgm "/dev/shm/bfp-rt.pgm" (normalize-im (trace-from-bfp (v) 0 :w 200 :radius 16s-3)))
+   (reverse res)))
+
 
 #+nil
-(run)
+(require :rayt)
+
+#+nil
+(let* ((ri 1.515s0)
+       (f (find-focal-length 63s0))
+       (dir (ray-behind-objective (v 0 0 0) 
+				  (v 0 0 .999) 
+				  (v (* -1 ri f))
+				  (v 1) f 1.45 ri)))
+  (project-ray-into-bfp dir ri f))
+
+#+nil
+(project-ray-into-bfp (normalize (v (sqrt 2) 1 0)) 1.515 (find-focal-length 63s0))
