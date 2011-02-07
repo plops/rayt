@@ -175,25 +175,25 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
 	 (* st (cos phi))))))
 
 
-(defun check-unit-vector (&rest rest)
-  (declare (ignore rest)))
-
-(defun check-range (min max &rest rest)
-  (declare (ignore min max rest)))
-
-
 ;; (defun check-unit-vector (&rest rest)
-;;   ;; turn off for faster speed
-;;   (dolist (e rest)
-;;     (unless (< (abs (- (norm e) 1)) 1s-6)
-;;       (error "vector isn't normalized"))))
+;;   (declare (ignore rest)))
 
 ;; (defun check-range (min max &rest rest)
-;; #+nil  (declare (type num min max))
-;;   (dolist (e rest)
-;;     (declare (type num e))
-;;     (unless (< min e max)
-;;       (error "range check failed"))))
+;;   (declare (ignore min max rest)))
+
+
+(defun check-unit-vector (&rest rest)
+  ;; turn off for faster speed
+  (dolist (e rest)
+    (unless (< (abs (- (norm e) 1)) 1s-6)
+      (error "vector isn't normalized"))))
+
+(defun check-range (min max &rest rest)
+#+nil  (declare (type num min max))
+  (dolist (e rest)
+    (declare (type num e))
+    (unless (< min e max)
+      (error "range check failed"))))
 
 (defun req (&optional name)
   (error "Required argument ~@[~S~] missing" name))
@@ -222,9 +222,9 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
   (declare ((single-float 0s0 #.+2*pi+) angle)
            (vec vect))
   (check-unit-vector vect)
-  (let* ((u (aref vect 0))
-         (v (aref vect 1))
-         (w (aref vect 2))
+  (let* ((u (vx vect))
+         (v (vy vect))
+         (w (vz vect))
          (c (cos angle))
          (s (sin angle))
          (1-c (- 1 c))
@@ -255,9 +255,11 @@ result."
   (let ((res (v)))
     (dotimes (i 3)
       (dotimes (j 3)
-        (incf (aref res i)
-              (* (aref matrix j i) (aref vect j)))))
+        (incf (aref res (- 2 i))
+              (* (aref matrix (- 2 j) i) (aref vect j)))))
     res))
 #+nil
-(m* (rotation-matrix +pi/2+ (v 1 0 0)) (v 0 0 1))
+(let ((n 13))
+ (loop for i below n collect
+      (m* (rotation-matrix (* i (/ +2*pi+ n)) (normalize (v 1))) (v 0 0 1))))
 
