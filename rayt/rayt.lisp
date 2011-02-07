@@ -331,7 +331,7 @@ direction of excitation light)."
 
 
 (defmacro tmp (str &rest rest)
-  `(concatenate 'string "/home/martin/tmp/t0206/"
+  `(concatenate 'string "/home/martin/tmp/t0207/"
 		(format nil ,str ,@rest)))
 
 
@@ -501,7 +501,7 @@ spheres is defined by RADIUS-BFP-MM."
 	   (type (simple-array (unsigned-byte 8) 2) bfp)
 	   (type vec ffp-pos)
 	   (type num radius-mm ri mag f))
-  (with-open-file (stream "/dev/shm/obj.asy" :direction :output
+  (with-open-file (stream (tmp "obj.asy") :direction :output
 		   :if-exists :supersede
 		   :if-does-not-exist :create)
   (macrolet ((asy (str &rest rest)
@@ -517,7 +517,7 @@ spheres is defined by RADIUS-BFP-MM."
 	    (rif (* ri f))
 	    (r (find-bfp-radius na f)))
        (asy "import three;")
-       (asy "size(1000,1000);")
+       (asy "size(200,200);")
        (let* ((radius (* radius-mm ri))
 	      (offset-mm (v (vz (aref *centers* illum-nucleus)) 0 0)) ;; focus on nucleus
 	      (nuc-center (let ((c (.- (aref *centers* protected-nucleus)
@@ -554,27 +554,42 @@ spheres is defined by RADIUS-BFP-MM."
 				       (b (project-ray-into-bfp (normalize cc) ri f)))
 				  (push cc ccs) 
 				  (scale b)))))
-	    (progn	 (asy "draw((0,0,0)..(0,0,.1));")
-			 (asy "draw((0,0,0)..(0,.1,0));")
-			 (asy "draw((0,0,0)..(.1,0,0));")
-			 (asy "draw(shift(~a)*scale3(~f)*unitsphere);"
-			      (coord nuc-center)
-			      (* .8 radius))
+	    (progn	 
+	      (asy "currentprojection=perspective(
+camera=(4.98788094302443,4.00955657639435,2.01112380474988),
+up=(0.000392603828345185,0.000309874871399901,-0.00154884955268845),
+target=(0.0409059444797579,0.105001572683979,-0.0240156297638063),
+zoom=0.696946091482217,
+angle=3.99957957637564,
+autoadjust=false);")
+	      (asy "draw(Label(\"$z$\",1),(0,0,0)--(0,0,.1),Arrow3);")
+	      (asy "draw(Label(\"$y$\",1,NW),(0,0,0)--(0,.1,0),Arrow3);")
+	      (asy "draw(Label(\"$x$\",1),(0,0,0)--(.1,0,0),Arrow3);")
+	      (asy "draw((0,0,0)..(0,.1,0));")
+	      (asy "draw((0,0,0)..(.1,0,0));")
+	      (dotimes (i (length *centers*))
+			   (let ((c (let ((c (.- (aref *centers* i)
+						 (.+ ffp-pos offset-mm))))
+				      (.s (* (signum (- (vz c))) ri) c))))
+			     (asy "draw(shift(~a)*scale3(~f)*unitsphere,lightgreen);"
+				  (coord c)
+				  radius)
+			     (asy "label(~s,~a);" (format nil "~d" i)
+				  (coord (.- c (v 0 (- radius) (- radius)))))))
 			 (asy "draw((0,0,0)..~a);" (coord nuc-center))
-			 (asy "draw((0,0,0)..~a);" (coord meridian))
+			 
 			 (asy "draw((0,0,0)..~a);" (coord (.+ (.s (- 1 (/ bb-x dist))
 								  nuc-center) 
 							      meridian)))
-			 (asy "draw(~a" (coord (v)))
 			 (dolist (e ccs)
-			   (asy "--~a" (coord e)))
-			 (asy ");")
-			 
-			 (asy "draw(~a" (coord vc0))
-			 (dolist (e vertices)
-			   (asy "--~a" (coord (v 0 (vy e) (vx e)))))
-			 (asy ");")
-			 
+			   (asy "draw((0,0,0)--~a);" (coord e)))
+		       
+#+nil
+			 (progn (asy "draw(~a" (coord vc0))
+			   (dolist (e vertices)
+			     (asy "--~a" (coord (v 0 (vy e) (vx e)))))
+			   (asy ");")
+			   )			 
 			 (format t "~a~%" (list ccs (map-into vertices 
 						     #'(lambda (v) (v (floor (vz v))
 								 (floor (vy v)) 
@@ -594,65 +609,71 @@ spheres is defined by RADIUS-BFP-MM."
 	    vc0))))))))
 
 
-#+nil
-(format t "~a~%"
- (run))
+#+nil ;asy -tex pdflatex obj.asy
+(let ((bfp (make-image 256)))
+ (project-nucleus-into-bfp bfp 0 2 (let ((e (aref *centers* 0)))
+				     (v 0 (vy e) (vx e)))
+			   :radius-mm 16s-3)
 
-(defun sum-bfp-raster (bfp illum-nucleus protected-nucleus 
-		       &key (w-ffp 30) (radius-ffp-mm 1.5s-3)
-		       (radius-project-mm 1.5s-3))
-  "Average BFP exposure pattern of PROTECTED-NUCLEUS for an area with
+ #+nil
+ (format t "~a~%"
+	 (run))
+
+ (defun sum-bfp-raster (bfp illum-nucleus protected-nucleus 
+			&key (w-ffp 30) (radius-ffp-mm 1.5s-3)
+			(radius-project-mm 1.5s-3))
+   "Average BFP exposure pattern of PROTECTED-NUCLEUS for an area with
 radius RADIUS-FFP-MM on LCoS that illuminates the given
 ILLUM-NUCLEUS. The size of the projected spheres is defined by
 RADIUS-BFP-MM."
-  (declare (type fixnum illum-nucleus protected-nucleus)
-	   (type (simple-array (unsigned-byte 8) 2) bfp)
-	   (type num radius-ffp-mm))
-  (destructuring-bind (h w) (array-dimensions bfp)
-    (declare (ignore h))
-    (let* ((ffp (make-image w-ffp))
-	  (field (* *data-dx-mm* *data-width-px*))
-	  (s (/ field w)))
-     (draw-nucleus ffp illum-nucleus :radius-mm radius-ffp-mm)
-     (dotimes (j w-ffp)
-       (dotimes (i w-ffp)
-	 (when (< 0 (aref ffp j i))
-	   (project-nucleus-into-bfp bfp illum-nucleus protected-nucleus
-				     (.- (.s s (v 0 j i))
-					 (.s (* .5s0 field) (v 0 1 1)))
-				     :radius-mm radius-project-mm :triangles 23))))
-     (format t "~a~%" ffp)
-     (write-pgm (tmp "sumffp~3,'0d.pgm" illum-nucleus) ffp)
-     (write-pgm (tmp "sumbfp~3,'0d.pgm" illum-nucleus) bfp))))
+   (declare (type fixnum illum-nucleus protected-nucleus)
+	    (type (simple-array (unsigned-byte 8) 2) bfp)
+	    (type num radius-ffp-mm))
+   (destructuring-bind (h w) (array-dimensions bfp)
+     (declare (ignore h))
+     (let* ((ffp (make-image w-ffp))
+	    (field (* *data-dx-mm* *data-width-px*))
+	    (s (/ field w)))
+       (draw-nucleus ffp illum-nucleus :radius-mm radius-ffp-mm)
+       (dotimes (j w-ffp)
+	 (dotimes (i w-ffp)
+	   (when (< 0 (aref ffp j i))
+	     (project-nucleus-into-bfp bfp illum-nucleus protected-nucleus
+				       (.- (.s s (v 0 j i))
+					   (.s (* .5s0 field) (v 0 1 1)))
+				       :radius-mm radius-project-mm :triangles 23))))
+       (format t "~a~%" ffp)
+       (write-pgm (tmp "sumffp~3,'0d.pgm" illum-nucleus) ffp)
+       (write-pgm (tmp "sumbfp~3,'0d.pgm" illum-nucleus) bfp))))
 
 
-(defun run ()
- (let ((bfp (make-array (list 200 200) :element-type '(unsigned-byte 8)))
-       (res ())
-       (nuc 0))
-   (dotimes (i (length *centers*))
-     (unless (= i nuc)
-       (sum-bfp-raster bfp nuc i :radius-ffp-mm 16s-3) 
-      #+nil(push (project-nucleus-into-bfp bfp nuc i (v) :radius-mm 16s-3 :triangles 23)
-	    res)))
-   (write-pgm "/dev/shm/bfp.pgm" bfp)
-   ;; compare with raytracer
-   (write-pgm "/dev/shm/bfp-rt.pgm" (normalize-im (trace-from-bfp
-						   (v) nuc :w 200 :radius 16s-3)))
-   (reverse res)))
+ (defun run ()
+   (let ((bfp (make-array (list 200 200) :element-type '(unsigned-byte 8)))
+	 (res ())
+	 (nuc 0))
+     (dotimes (i (length *centers*))
+       (unless (= i nuc)
+	 (sum-bfp-raster bfp nuc i :radius-ffp-mm 16s-3) 
+	 #+nil(push (project-nucleus-into-bfp bfp nuc i (v) :radius-mm 16s-3 :triangles 23)
+		    res)))
+     (write-pgm "/dev/shm/bfp.pgm" bfp)
+     ;; compare with raytracer
+     (write-pgm "/dev/shm/bfp-rt.pgm" (normalize-im (trace-from-bfp
+						     (v) nuc :w 200 :radius 16s-3)))
+     (reverse res)))
 
 
-#+nil
-(require :rayt)
+ #+nil
+ (require :rayt)
 
-#+nil
-(let* ((ri 1.515s0)
-       (f (find-focal-length 63s0))
-       (dir (ray-behind-objective (v 0 0 0) 
-				  (v 0 0 .999) 
-				  (v (* -1 ri f))
-				  (v 1) f 1.45 ri)))
-  (project-ray-into-bfp dir ri f))
+ #+nil
+ (let* ((ri 1.515s0)
+	(f (find-focal-length 63s0))
+	(dir (ray-behind-objective (v 0 0 0) 
+				   (v 0 0 .999) 
+				   (v (* -1 ri f))
+				   (v 1) f 1.45 ri)))
+   (project-ray-into-bfp dir ri f))
 
-#+nil
-(project-ray-into-bfp (normalize (v (sqrt 2) 1 0)) 1.515 (find-focal-length 63s0))
+ #+nil
+ (project-ray-into-bfp (normalize (v (sqrt 2) 1 0)) 1.515 (find-focal-length 63s0)))
