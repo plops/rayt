@@ -331,7 +331,7 @@ direction of excitation light)."
 
 
 (defmacro tmp (str &rest rest)
-  `(concatenate 'string "/home/martin/tmp/t0204/"
+  `(concatenate 'string "/home/martin/tmp/t0206/"
 		(format nil ,str ,@rest)))
 
 
@@ -403,7 +403,7 @@ direction of excitation light)."
 	     (y (floor (vy q)))
 	     (rad (floor (* s radius-mm) *data-dx-mm*)))
        (format t "~a~%" (list dx-mm 'dx-mm c q rad 's s ))
-       (raster-disk img y x rad))))
+       (raster-disk img y x rad 56))))
   img)
 
 (defun draw-slice-through-point (slice-px &key 
@@ -426,7 +426,7 @@ direction of excitation light)."
 (defun sum-bfp (nucleus &key (w-bfp 100) (w-ffp 30) (radius-ffp-mm 1.5s-3)
 		(radius-bfp-mm radius-ffp-mm))
   "Average BFP exposure pattern for an area with radius RADIUS-FFP-MM
-on LCoS that illuminates the give NUCLEUS. The size of the projected
+on LCoS that illuminates the given NUCLEUS. The size of the projected
 spheres is defined by RADIUS-BFP-MM."
   (let* ((ffp (make-image w-ffp))
 	 (bfp (make-image w-bfp :type 'num))
@@ -589,7 +589,7 @@ spheres is defined by RADIUS-BFP-MM."
 							  (dolist (e (list a b c))
 							    (push `(floor (vy ,e)) r)
 							    (push `(floor (vx ,e)) r))
-							  (reverse r)) 250)))
+							  (reverse r)) 1)))
 		  (tri vc0 e f))))
 	    vc0))))))))
 
@@ -598,6 +598,33 @@ spheres is defined by RADIUS-BFP-MM."
 (format t "~a~%"
  (run))
 
+(defun sum-bfp-raster (bfp illum-nucleus protected-nucleus 
+		       &key (w-ffp 30) (radius-ffp-mm 1.5s-3)
+		       (radius-project-mm 1.5s-3))
+  "Average BFP exposure pattern of PROTECTED-NUCLEUS for an area with
+radius RADIUS-FFP-MM on LCoS that illuminates the given
+ILLUM-NUCLEUS. The size of the projected spheres is defined by
+RADIUS-BFP-MM."
+  (declare (type fixnum illum-nucleus protected-nucleus)
+	   (type (simple-array (unsigned-byte 8) 2) bfp)
+	   (type num radius-ffp-mm))
+  (destructuring-bind (h w) (array-dimensions bfp)
+    (declare (ignore h))
+    (let* ((ffp (make-image w-ffp))
+	  (field (* *data-dx-mm* *data-width-px*))
+	  (s (/ field w)))
+     (draw-nucleus ffp illum-nucleus :radius-mm radius-ffp-mm)
+     (dotimes (j w-ffp)
+       (dotimes (i w-ffp)
+	 (when (< 0 (aref ffp j i))
+	   (project-nucleus-into-bfp bfp illum-nucleus protected-nucleus
+				     (.- (.s s (v 0 j i))
+					 (.s (* .5s0 field) (v 0 1 1)))
+				     :radius-mm radius-project-mm :triangles 23))))
+     (format t "~a~%" ffp)
+     (write-pgm (tmp "sumffp~3,'0d.pgm" illum-nucleus) ffp)
+     (write-pgm (tmp "sumbfp~3,'0d.pgm" illum-nucleus) bfp))))
+
 
 (defun run ()
  (let ((bfp (make-array (list 200 200) :element-type '(unsigned-byte 8)))
@@ -605,7 +632,8 @@ spheres is defined by RADIUS-BFP-MM."
        (nuc 0))
    (dotimes (i (length *centers*))
      (unless (= i nuc)
-      (push (project-nucleus-into-bfp bfp nuc i (v) :radius-mm 16s-3 :triangles 23)
+       (sum-bfp-raster bfp nuc i :radius-ffp-mm 16s-3) 
+      #+nil(push (project-nucleus-into-bfp bfp nuc i (v) :radius-mm 16s-3 :triangles 23)
 	    res)))
    (write-pgm "/dev/shm/bfp.pgm" bfp)
    ;; compare with raytracer
