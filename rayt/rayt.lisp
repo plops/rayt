@@ -310,7 +310,7 @@ direction of excitation light)."
    (declare (type (simple-array vec 1) pd))
    (dotimes (j (length pd))
      (let ((bfp/r (aref pd j))
-	   (offset-mm (v 0 0 (vz (aref *centers* nucleus)))))
+	   (offset-mm (v (vz (aref *centers* nucleus)) 0 0)))
        (handler-case 
 	   (multiple-value-bind (dir hit)
 	       (ray-behind-objective obj bfp/r
@@ -494,10 +494,10 @@ spheres is defined by RADIUS-BFP-MM."
 ;; direct (and therefore faster) projection of the sphere through
 ;; objective onto bfp
 
-(defun project-nucleus-into-bfp (bfp nucleus ffp-pos 
+(defun project-nucleus-into-bfp (bfp illum-nucleus protected-nucleus ffp-pos 
 				 &key (mag 63s0) (f (find-focal-length mag))
 				 (ri 1.515s0) (radius-mm 1.5s-3) (triangles 13) (na 1.45))
-  (declare (type fixnum nucleus triangles)
+  (declare (type fixnum illum-nucleus protected-nucleus triangles)
 	   (type (simple-array (unsigned-byte 8) 2) bfp)
 	   (type vec ffp-pos)
 	   (type num radius-mm ri mag f))
@@ -519,7 +519,9 @@ spheres is defined by RADIUS-BFP-MM."
        (asy "import three;")
        (asy "size(1000,1000);")
        (let* ((radius (* radius-mm ri))
-	      (nuc-center (let ((c (.- (aref *centers* nucleus) ffp-pos)))
+	      (offset-mm (v (vz (aref *centers* illum-nucleus)) 0 0)) ;; focus on nucleus
+	      (nuc-center (let ((c (.- (aref *centers* protected-nucleus)
+				       (.+ ffp-pos offset-mm))))
 			    (.s (* (signum (- (vz c))) ri) c)))
 	 (dist (norm nuc-center))
 	 (c0 (.s (/ dist) nuc-center))
@@ -599,12 +601,16 @@ spheres is defined by RADIUS-BFP-MM."
 
 (defun run ()
  (let ((bfp (make-array (list 200 200) :element-type '(unsigned-byte 8)))
-       (res ()))
+       (res ())
+       (nuc 0))
    (dotimes (i (length *centers*))
-     (push (project-nucleus-into-bfp bfp i (v) :radius-mm 16s-3)
-	   res))
+     (unless (= i nuc)
+      (push (project-nucleus-into-bfp bfp nuc i (v) :radius-mm 16s-3 :triangles 23)
+	    res)))
    (write-pgm "/dev/shm/bfp.pgm" bfp)
-   (write-pgm "/dev/shm/bfp-rt.pgm" (normalize-im (trace-from-bfp (v) 0 :w 200 :radius 16s-3)))
+   ;; compare with raytracer
+   (write-pgm "/dev/shm/bfp-rt.pgm" (normalize-im (trace-from-bfp
+						   (v) nuc :w 200 :radius 16s-3)))
    (reverse res)))
 
 
