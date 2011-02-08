@@ -376,20 +376,20 @@ spheres is defined by RADIUS-BFP-MM."
 
 
 
- (defun run ()
-   (let ((bfp (make-array (list 200 200) :element-type '(unsigned-byte 8)))
-	 (res ())
-	 (nuc 0))
-     (dotimes (i (length *centers*))
-       (unless (= i nuc)
-	 (sum-bfp-raster bfp nuc i :radius-ffp-mm 16s-3) 
-	 #+nil(push (project-nucleus-into-bfp bfp nuc i (v) :radius-mm 16s-3 :triangles 23)
+(defun run ()
+  (let ((bfp (make-array (list 200 200) :element-type '(unsigned-byte 8)))
+	(res ())
+	(nuc 0))
+    (dotimes (i (length *centers*))
+      (unless (= i nuc)
+	(sum-bfp-raster bfp nuc i :radius-ffp-mm 16s-3) 
+	#+nil(push (project-nucleus-into-bfp bfp nuc i (v) :radius-mm 16s-3 :triangles 23)
 		    res)))
-     (write-pgm "/dev/shm/bfp.pgm" bfp)
+    (write-pgm "/dev/shm/bfp.pgm" bfp)
      ;; compare with raytracer
-     (write-pgm "/dev/shm/bfp-rt.pgm" (normalize-im (trace-from-bfp
+    (write-pgm "/dev/shm/bfp-rt.pgm" (normalize-im (trace-from-bfp
 						     (v) nuc :w 200 :radius 16s-3)))
-     (reverse res)))
+    (reverse res)))
 
 
  #+nil
@@ -405,4 +405,4 @@ spheres is defined by RADIUS-BFP-MM."
    (project-ray-into-bfp dir ri f))
 
  #+nil
- (project-ray-into-bfp (normalize (v (sqrt 2) 1 0)) 1.515 (find-focal-length 63s0)))
+ (project-ray-into-bfp (normalize (v (sqrt 2) 1 0)) 1.515 (find-focal-length 63s0))
