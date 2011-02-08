@@ -23,17 +23,27 @@
    #:raster-disk
    #:raster-triangle))
 
-(defpackage :rayt
-  (:use :cl :base :poisson :raster)
+(defpackage :rayt-model
+  (:use :cl :base :raster)
   (:export
    #:*centers-fix*
    #:*centers*
    #:*data-dz-mm*
    #:*data-dx-mm*
    #:*data-width-px*
-   #:raster-circle
-   #:raster-disk
-   #:raster-line
    #:draw-nucleus
    #:draw-slice-through-point
+   #:find-bfp-radius
+   #:find-focal-length))
+
+(defpackage :simple-rayt
+  (:use :cl :base :raster :rayt-model)
+  (:export   
+   #:project-ray-into-bfp
+   #:project-nucleus-into-bfp
+   #:sum-bfp-raster))
+
+(defpackage :rayt
+  (:use :cl :base :poisson :raster :rayt-model)
+  (:export
    #:sum-bfp))
