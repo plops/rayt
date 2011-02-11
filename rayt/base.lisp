@@ -247,10 +247,9 @@ so that (ARRAY ...) corresponds to (AREF ARRAY ...)."
 (rotation-matrix (/ +pi+ 2) (v 0 0 1))
 
 (defun m* (matrix vect)
-  "Multiply MATRIX with VECT. Copies 4th component w from VECT into
-result."
-  (declare (mat matrix)
-           (vec vect)
+  "Multiply MATRIX with VECT."
+  (declare (type mat matrix)
+           (type vec vect)
            (values vec &optional))
   (let ((res (v)))
     (dotimes (i 3)

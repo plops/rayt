@@ -65,7 +65,10 @@
 				    (.+ ffp-pos offset-mm))))
 			 (.s (* (signum (- (vz c))) ri) c)))
 	   (dist (norm nuc-center)) ;;
-	   (c0 (.s (/ dist) nuc-center))
+	   (c0 (if (< dist 1e-6)
+		   (return-from project-nucleus-into-bfp nil)
+		   #+nil (error "distance between nuclei too small.")
+		   (.s (/ dist) nuc-center)))
 	   (bb-x (/ (* radius radius)
 		    (* 2 dist)))
 	   (bb-y (let ((y2 (- (* radius radius) (* bb-x bb-x)))) 

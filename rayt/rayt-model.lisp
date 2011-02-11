@@ -1,10 +1,10 @@
 (in-package :rayt-model)
 
-(defparameter *centers* nil) ;; in mm
-(defparameter *centers-fix* nil)
-(defparameter *data-dz-mm* 1s-3)
-(defparameter *data-dx-mm* .1s-3)
-(defparameter *data-width-px* 300)
+(defvar *centers* nil) ;; in mm
+(defvar *centers-fix* nil)
+(defvar *data-dz-mm* 1s-3)
+(defvar *data-dx-mm* .1s-3)
+(defvar *data-width-px* 300)
 			
 (let* ((l '((3 212 168)
 	    (6 79 177)
@@ -70,7 +70,7 @@
 	     (y (floor (vy q)))
 	     (rad (floor (* s radius-mm) *data-dx-mm*)))
        (format t "~a~%" (list dx-mm 'dx-mm c q rad 's s ))
-       (raster-disk img y x rad 56))))
+       (raster-disk img y x rad 6))))
   img)
 
 (defun draw-slice-through-point (slice-px &key 
