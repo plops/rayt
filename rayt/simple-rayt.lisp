@@ -16,7 +16,7 @@
 	 (sinacosz (sin (acos z)) #+nil (sqrt (- 1s0 (* z z))))
 	 (nf (* ri f))
 	 (rho (* nf sinacosz)))
-    (format t "project into bfp ~%~a~%" (list 
+    #+nil(format t "project into bfp ~%~a~%" (list 
 					    'cosatanq cosatanq
 					    'sinatanq sinatanq
 					    'sinacosz sinacosz
@@ -60,9 +60,9 @@
   (let* ((rif (* ri f))
 	 (r (find-bfp-radius na f)))
     (let* ((radius (* radius-mm ri))
-	   (offset-mm (v (vz (aref *centers* illum-nucleus)) 0 0)) ;; focus on nucleus
+	   (z-offset-mm (v (vz (aref *centers* illum-nucleus)) 0 0)) ;; focus on nucleus
 	   (nuc-center (let ((c (.- (aref *centers* protected-nucleus)
-				    (.+ ffp-pos offset-mm))))
+				    (.+ ffp-pos z-offset-mm))))
 			 (.s (* (signum (- (vz c))) ri) c)))
 	   (dist (norm nuc-center)) ;;
 	   (c0 (if (< dist 1e-6)
@@ -72,10 +72,11 @@
 	   (bb-x (/ (* radius radius)
 		    (* 2 dist)))
 	   (bb-y (let ((y2 (- (* radius radius) (* bb-x bb-x)))) 
-		   (if (<= 0 y2) (sqrt y2)
-		     (error "arg neg ~a" (list 'bb-x bb-x)))))
+		   (if (<= 0 y2) 
+		       (sqrt y2)
+		       (return-from project-nucleus-into-bfp nil)
+		       #+nil (error "arg neg ~a" (list 'bb-x bb-x)))))
 	   (meridian (.s bb-y (cross c0 (v 0 0 1)))) ;; prependicular to ray
-	   (rif (* ri f))
 	   (bfp-rad (find-bfp-radius na f))
 	   (s (/ (array-dimension bfp 0) (* 2 bfp-rad))))
       (flet ((scale (q)
@@ -122,19 +123,16 @@ RADIUS-BFP-MM."
    (declare (type fixnum illum-nucleus protected-nucleus)
 	    (type (simple-array (unsigned-byte 8) 2) bfp)
 	    (type num radius-ffp-mm))
-   (destructuring-bind (h w) (array-dimensions bfp)
-     (declare (ignore h))
-     (let* ((ffp (make-image w-ffp))
-	    (field (* *data-dx-mm* *data-width-px*))
-	    (s (/ field w)))
-       (draw-nucleus ffp illum-nucleus :radius-mm radius-ffp-mm)
-       (dotimes (j w-ffp)
-	 (dotimes (i w-ffp)
-	   (when (< 0 (aref ffp j i))
-	     (project-nucleus-into-bfp bfp illum-nucleus protected-nucleus
-				       (.- (.s s (v 0 j i))
-					   (.s (* .5s0 field) (v 0 1 1)))
-				       :radius-mm radius-project-mm :triangles 23))))
-       (format t "~a~%" ffp)
-       (write-pgm (tmp "sumffp~3,'0d.pgm" illum-nucleus) ffp)
-       (write-pgm (tmp "sumbfp~3,'0d.pgm" illum-nucleus) bfp))))
+   (let* ((ffp (rayt::make-image w-ffp))
+	  (field (* *data-dx-mm* *data-width-px*))
+	  (s (/ field w-ffp)))
+     (draw-nucleus ffp illum-nucleus :radius-mm radius-ffp-mm)
+     (dotimes (j w-ffp)
+       (dotimes (i w-ffp)
+	 (when (< 0 (aref ffp j i))
+	   (project-nucleus-into-bfp bfp illum-nucleus protected-nucleus
+				     (.- (.s s (v 0 j i))
+					 (.s (* .5s0 field) (v 0 1 1)))
+				     :radius-mm radius-project-mm :triangles 23))))
+					;(format t "~a~%" ffp)
+     (values bfp ffp)))
