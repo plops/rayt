@@ -69,7 +69,7 @@
 	     (x (floor (vx q)))
 	     (y (floor (vy q)))
 	     (rad (floor (* s radius-mm) *data-dx-mm*)))
-       (format t "~a~%" (list dx-mm 'dx-mm c q rad 's s ))
+#+nil       (format t "~a~%" (list dx-mm 'dx-mm c q rad 's s ))
        (raster-disk img y x rad 6))))
   img)
 
