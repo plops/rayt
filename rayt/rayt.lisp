@@ -332,7 +332,7 @@ direction of excitation light)."
 	      (normalize-im sum))))
 
 
-(defun make-image (h &key (w h) (type '(unsigned-byte 8)))
+(defun make-image (h &key (w h) (type '(unsigned-byte 64)))
   (make-array (list h w)
 	      :element-type type))
 

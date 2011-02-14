@@ -54,7 +54,7 @@
 				     &key (mag 63s0) (f (find-focal-length mag))
 				     (ri 1.515s0) (radius-mm 1.5s-3) (triangles 13) (na 1.4))
   (declare (type fixnum illum-nucleus protected-nucleus triangles)
-	   (type (simple-array (unsigned-byte 8) 2) bfp)
+	   (type bfp-type bfp)
 	   (type vec ffp-pos)
 	   (type num radius-mm ri mag f))
   (let* ((rif (* ri f))
@@ -121,7 +121,7 @@ radius RADIUS-FFP-MM on LCoS that illuminates the given
 ILLUM-NUCLEUS. The size of the projected spheres is defined by
 RADIUS-BFP-MM."
    (declare (type fixnum illum-nucleus protected-nucleus)
-	    (type (simple-array (unsigned-byte 8) 2) bfp)
+	    (type bfp-type bfp)
 	    (type num radius-ffp-mm))
    (let* ((ffp (rayt::make-image w-ffp))
 	  (field (* *data-dx-mm* *data-width-px*))

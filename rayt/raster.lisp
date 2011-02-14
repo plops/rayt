@@ -1,9 +1,13 @@
 (in-package :raster)
 
+(deftype bfp-type ()
+  `(simple-array (unsigned-byte 64) 2))
+
 (declaim (inline draw-point))
 (defun draw-point (img j i val)
-  (declare (type (simple-array (unsigned-byte 8) 2) img)
-	   (type fixcoord j i))
+  (declare (type bfp-type img)
+	   (type fixcoord j i)
+	   (type (unsigned-byte 64) val))
   (destructuring-bind (h w) (array-dimensions img)
     (declare (type fixnum w h))
     (when (and (<= 0 i (1- w))
@@ -13,7 +17,7 @@
 (defun raster-line (img y x y1 x1 &optional (val 255))
   ;; wikipedia Bresenham's_line_algorithm
   (declare (type fixnum y x y1 x1)
-	   (type (simple-array (unsigned-byte 8) 2) img)
+	   (type bfp-type img)
 	   (type (unsigned-byte 8) val))
   (let* ((dx (abs (- x1 x)))
 	 (dy (abs (- y1 y)))
@@ -25,7 +29,7 @@
        (when (and (= x x1)
 		  (= y y1))
 	 (return-from raster-line
-	   (the (simple-array (unsigned-byte 8) 2) img)))
+	   (the bfp-type img)))
        (let ((e2 (* 2 e)))
 	 (when (< (- dy) e2)
 	   (decf e dy)
@@ -37,9 +41,9 @@
 
 (defun raster-circle (img y0 x0 r &optional (val 255))
   ;; wikipedia Midpoint_circle_algorithm
-  (declare (type (simple-array (unsigned-byte 8) 2) img) 
+  (declare (type bfp-type img) 
 	   (type fixnum x0 y0 r)
-	   (type (unsigned-byte 8) val))
+	   (type (unsigned-byte 64) val))
   (let ((f (- 1 r))
 	(dx 1)
 	(dy (* -2 r))
@@ -66,10 +70,10 @@
 	   (q y (- x))
 	   (q (- y) x)
 	   (q (- y) (- x)))))
-  (the (simple-array (unsigned-byte 8) 2) img))
+  (the bfp-type img))
 
 (defun raster-disk (img y0 x0 r &optional (val 255))
-  (declare (type (simple-array (unsigned-byte 8) 2) img) (type (unsigned-byte 8) val) 
+  (declare (type bfp-type img) (type (unsigned-byte 64) val) 
 	   (type fixnum x0 y0 r))
   (let ((f (- 1 r))
 	(dx 1)
@@ -95,7 +99,7 @@
 	   (q (- y) (- x) x)
 	   (q x y (- y))
 	   (q (- x) y (- y)))))
-  (the (simple-array (unsigned-byte 8) 2) img))
+  (the bfp-type img))
 
 (declaim (optimize (speed 3) (safety 0) (debug 1)))
 
@@ -145,14 +149,14 @@
 (declaim (inline draw-span))
 (defun draw-span (img y x1 x2 val)
   (declare (type fixcoord y x1 x2)
-	   (type (simple-array (unsigned-byte 8) 2) img) (type (unsigned-byte 8) val) )
+	   (type bfp-type img) (type (unsigned-byte 64) val) )
   (loop for x from (1+ x1) upto x2 do 
        (draw-point img y x val)))
 
 ;; triangles must be sorted y0 <= y1 <= y2
 (defun sorted-triangle (img y0 x0 y1 x1 y2 x2 val)
   (declare (type fixcoord y0 x0 y1 x1 y2 x2)
-	   (type (simple-array (unsigned-byte 8) 2) img) (type (unsigned-byte 8) val) )
+	   (type bfp-type img) (type (unsigned-byte 64) val) )
   (let* ((handedness (- (* (- y1 y0)
 			   (- x2 x0))
 			(* (- x1 x0)
@@ -178,7 +182,7 @@
 
 (defun raster-triangle (img y0 x0 y1 x1 y2 x2 &optional (val 255))
   (declare (type fixcoord y0 x0 y1 x1 y2 x2)
-	   (type (simple-array (unsigned-byte 8) 2) img) (type (unsigned-byte 8) val))
+	   (type bfp-type img) (type (unsigned-byte 64) val))
   (when (< y1 y0)
     (rotatef y0 y1)
     (rotatef x0 x1))

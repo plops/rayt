@@ -56,7 +56,7 @@
 (defun draw-nucleus (img nucleus &key 
 		     (radius-mm 1.5s-3)
 		     (dx-mm 1s0))
-  (declare (type (simple-array (unsigned-byte 8) 2) img)
+  (declare (type bfp-type img)
 	   (type fixnum nucleus)
 	   (type num radius-mm dx-mm))
   (destructuring-bind (h w) (array-dimensions img)

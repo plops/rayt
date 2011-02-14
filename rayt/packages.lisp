@@ -18,6 +18,7 @@
 (defpackage :raster
   (:use :cl :base)
   (:export
+   #:bfp-type
    #:raster-line
    #:raster-circle
    #:raster-disk
